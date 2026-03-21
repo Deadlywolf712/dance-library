@@ -341,7 +341,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const targets = [
             document.getElementById('notes-sidebar-btn'),
-            document.getElementById('home-notes-btn')
+            document.getElementById('home-notes-btn'),
+            document.getElementById('mobile-notes-btn')
         ];
         for (const btn of targets) {
             if (!btn) continue;
@@ -2343,6 +2344,20 @@ document.addEventListener('DOMContentLoaded', () => {
     if (homeNotesBtn) homeNotesBtn.addEventListener('click', () => showNotesView());
     const homeSettingsBtn = document.getElementById('home-settings-btn');
     if (homeSettingsBtn) homeSettingsBtn.addEventListener('click', () => {
+        elements.bunnyLibInput.value = state.bunnyPullZone;
+        elements.themeSelect.value = state.theme;
+        elements.settingsModal.style.display = 'flex';
+        const tc = document.getElementById('theme-counter');
+        if (tc) tc.textContent = (elements.themeSelect.selectedIndex + 1) + ' / ' + elements.themeSelect.options.length;
+    });
+
+    // Mobile header buttons
+    const mobileNotesBtn = document.getElementById('mobile-notes-btn');
+    if (mobileNotesBtn) mobileNotesBtn.addEventListener('click', () => showNotesView());
+    const mobileHelpBtn = document.getElementById('mobile-help-btn');
+    if (mobileHelpBtn) mobileHelpBtn.addEventListener('click', openHelpModal);
+    const mobileSettingsBtn = document.getElementById('mobile-settings-btn');
+    if (mobileSettingsBtn) mobileSettingsBtn.addEventListener('click', () => {
         elements.bunnyLibInput.value = state.bunnyPullZone;
         elements.themeSelect.value = state.theme;
         elements.settingsModal.style.display = 'flex';

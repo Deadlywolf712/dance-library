@@ -1002,6 +1002,29 @@ body.sidebar-closed #mobile-header {
   z-index: 50;
 }
 
+.mobile-header-actions {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  margin-left: auto;
+}
+
+.mobile-header-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  padding: 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: color 0.2s, background 0.2s;
+  position: relative;
+}
+
+.mobile-header-btn:hover, .mobile-header-btn:active {
+  color: var(--accent);
+  background: var(--bg-surface-hover);
+}
+
 /* Home View Tiles */
 #home-view {
   padding: 40px;

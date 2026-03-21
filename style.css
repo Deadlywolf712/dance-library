@@ -511,7 +511,6 @@ body {
   position: relative;
   background-color: var(--bg-base);
   scroll-behavior: smooth;
-  padding-bottom: 20px;
 }
 
 
@@ -580,7 +579,7 @@ body.sidebar-closed #mobile-header {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 18px;
-  padding-bottom: 20px;
+  padding-bottom: 24px;
 }
 
 .course-tile {
@@ -932,12 +931,12 @@ video, iframe {
   }
   
   #video-info-wrapper {
-    padding: 20px 15px 60px;
+    padding: 20px 15px max(48px, env(safe-area-inset-bottom, 48px));
   }
-  
+
   .course-grid {
     grid-template-columns: 1fr;
-    padding-bottom: 60px;
+    padding-bottom: max(48px, env(safe-area-inset-bottom, 48px));
   }
   
   .video-controls-bar {
@@ -1789,7 +1788,7 @@ video.mirrored {
 
 @media (max-width: 768px) {
   .notes-view-inner {
-    padding: 20px;
+    padding: 20px 20px max(48px, env(safe-area-inset-bottom, 48px));
   }
 
   .notes-video-group {

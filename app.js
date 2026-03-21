@@ -1158,10 +1158,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         // Settings Modal
-        elements.settingsBtn.addEventListener('click', () => {
+        function openSettings() {
             elements.bunnyLibInput.value = state.bunnyPullZone;
+            elements.themeSelect.value = state.theme;
             elements.settingsModal.style.display = 'flex';
-        });
+            updateThemeCounter();
+        }
+        elements.settingsBtn.addEventListener('click', openSettings);
 
         elements.closeSettings.addEventListener('click', () => {
             elements.settingsModal.style.display = 'none';
@@ -2339,7 +2342,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const homeNotesBtn = document.getElementById('home-notes-btn');
     if (homeNotesBtn) homeNotesBtn.addEventListener('click', () => showNotesView());
     const homeSettingsBtn = document.getElementById('home-settings-btn');
-    if (homeSettingsBtn) homeSettingsBtn.addEventListener('click', () => { elements.settingsModal.style.display = 'flex'; });
+    if (homeSettingsBtn) homeSettingsBtn.addEventListener('click', () => {
+        elements.bunnyLibInput.value = state.bunnyPullZone;
+        elements.themeSelect.value = state.theme;
+        elements.settingsModal.style.display = 'flex';
+        const tc = document.getElementById('theme-counter');
+        if (tc) tc.textContent = (elements.themeSelect.selectedIndex + 1) + ' / ' + elements.themeSelect.options.length;
+    });
 
     document.getElementById('close-help').addEventListener('click', () => {
         helpModal.style.display = 'none';

@@ -932,7 +932,7 @@ video, iframe {
   }
   
   #video-info-wrapper {
-    padding: 20px 15px;
+    padding: 20px 15px calc(40px + env(safe-area-inset-bottom, 0px));
   }
   
   .course-grid {

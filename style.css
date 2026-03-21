@@ -511,6 +511,7 @@ body {
   position: relative;
   background-color: var(--bg-base);
   scroll-behavior: smooth;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 
@@ -579,6 +580,7 @@ body.sidebar-closed #mobile-header {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 18px;
+  padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
 }
 
 .course-tile {

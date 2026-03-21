@@ -6,6 +6,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const checkIsMobile = () => window.innerWidth <= 768 || /Mobi|Android/i.test(navigator.userAgent);
+    const isHosted = location.hostname.includes('github.io') || location.protocol === 'https:';
 
     // Safe JSON parse from localStorage (never crashes on corrupt data)
     function safeLoad(key, fallback) {
@@ -18,7 +19,7 @@ document.addEventListener('DOMContentLoaded', () => {
         tree: {},
         currentVideo: null,
         watched: new Set(safeLoad('watchedVideos', [])),
-        useBunny: checkIsMobile() ? true : (localStorage.getItem('useBunny') === 'true'),
+        useBunny: isHosted || checkIsMobile() ? true : (localStorage.getItem('useBunny') === 'true'),
         theme: localStorage.getItem('theme') || 'solarized-light',
         bunnyPullZone: localStorage.getItem('bunny_pull_zone') || (typeof BUNNY_PULL_ZONE !== 'undefined' ? BUNNY_PULL_ZONE : ''),
         loopA: null,
@@ -101,7 +102,7 @@ document.addEventListener('DOMContentLoaded', () => {
         setupEventListeners();
         
         // Init UI state
-        elements.sourceToggle.checked = checkIsMobile() ? true : state.useBunny;
+        elements.sourceToggle.checked = isHosted || checkIsMobile() ? true : state.useBunny;
         elements.themeSelect.value = state.theme;
         updateNotesBadge();
     }

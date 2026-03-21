@@ -1,0 +1,46 @@
+# Video files (served via Bunny CDN)
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.m3u8
+*.ts
+
+# Video folders (all the instructor/course folders with videos)
+Adolfo*/
+Alex*/
+Arthur*/
+Carolina*/
+Fernando*/
+Isabelle*/
+Kike*/
+Kizomba Masterclass/
+Korke*/
+Marco*/
+Pablo*/
+Salsa Masterclass/
+
+# Build/tool dependencies
+node_modules/
+__pycache__/
+*.pyc
+package.json
+package-lock.json
+pipeline_mapping.json
+
+# Backend/tooling scripts
+ai_backend.py
+generate_data_js.py
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+*~
+
+# Backup/reference
+_archive/
+Salsa Reference/

@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dance Masterclass Library</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400;1,600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <link rel="manifest" href="manifest.json">
+  <!-- Load Data before JS logic -->
+  <script src="data.js"></script>
+  <script src="salsa_course.js"></script>
+</head>
+<body>
+  <div class="noise-overlay"></div>
+
+  <!-- Sidebar Navigation -->
+  <aside id="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-title">Masterclass Library</div>
+      <div class="sidebar-actions">
+        <button class="settings-btn" id="home-sidebar-btn" aria-label="Home" title="Go Home">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        </button>
+        <button class="settings-btn" id="notes-sidebar-btn" aria-label="My Notes" title="My Notes &amp; Favorites">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+        </button>
+        <button class="settings-btn" id="help-btn" aria-label="Help &amp; Guide" title="Help &amp; Guide">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        </button>
+        <button class="settings-btn" id="collapse-all-btn" aria-label="Collapse All" title="Collapse All Folders">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 11 12 6 7 11"/><polyline points="17 18 12 13 7 18"/></svg>
+        </button>
+        <button class="settings-btn" id="open-settings" aria-label="Settings" title="Settings">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+        <button class="settings-btn" id="close-sidebar-btn" aria-label="Close Sidebar" title="Close Sidebar">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="search-container">
+      <input type="text" id="search-input" placeholder="Search videos or moves...">
+    </div>
+    <div id="library-nav">
+      <!-- Accordion injected via JS -->
+    </div>
+  </aside>
+
+  <!-- Main Content -->
+  <main id="main-content">
+    
+    <button id="open-sidebar-btn" class="floating-menu-btn" aria-label="Open Menu">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="3" y1="12" x2="21" y2="12"></line>
+        <line x1="3" y1="6" x2="21" y2="6"></line>
+        <line x1="3" y1="18" x2="21" y2="18"></line>
+      </svg>
+    </button>
+    
+    <!-- Mobile Header -->
+    <div id="mobile-header">
+      <button class="menu-toggle" id="menu-toggle-btn" aria-label="Menu">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+      </button>
+      <div class="sidebar-title">Masterclass Library</div>
+    </div>
+
+    <!-- Home View (Tiles) -->
+    <div id="home-view">
+      <h1 class="home-title">Dance Library</h1>
+      <div class="course-grid" id="course-grid">
+        <!-- Tiles injected via JS -->
+      </div>
+    </div>
+
+    <!-- Notes & Favorites View -->
+    <div id="notes-view" style="display: none;">
+      <div class="notes-view-inner">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
+          <h1 class="home-title" style="margin-bottom: 0;">My Notes</h1>
+          <button class="bookmark-add-btn open-export-modal-btn" title="Export or import data" style="opacity: 0.7; font-size: 0.75rem;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -1px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Export / Import
+          </button>
+        </div>
+        <p id="notes-subtitle" style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 15px;"></p>
+        <div class="notes-search-wrap">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.4;min-width:16px;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" id="notes-search-input" placeholder="Search notes, bookmarks, favorites..." autocomplete="off">
+        </div>
+        <div id="notes-content"></div>
+      </div>
+    </div>
+
+    <!-- Video View -->
+    <div id="video-view">
+      <div id="video-sticky-wrapper">
+        <div class="player-container">
+          <video id="video-player" controls preload="metadata"></video>
+          <div class="player-overlay-controls">
+            <button id="theater-btn" class="overlay-btn" title="Theater mode (T)">
+              <svg width="16" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+            </button>
+            <button id="mirror-btn" class="overlay-btn" title="Mirror video (M)">
+              <svg width="16" height="14" viewBox="0 0 20 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 1 1 8 6 15"/><polyline points="14 1 19 8 14 15"/><line x1="10" y1="1" x2="10" y2="15" stroke-dasharray="2 2"/></svg>
+            </button>
+            <button id="ab-loop-btn" class="overlay-btn" title="A-B Loop: set start [ set end ] clear Esc">A</button>
+            <div id="speed-overlay" class="custom-speed-control">
+              <button id="current-speed-btn">1.0x</button>
+              <div id="speed-dropdown" class="speed-dropdown">
+                <div data-speed="2.0">2.0x</div>
+                <div data-speed="1.75">1.75x</div>
+                <div data-speed="1.5">1.5x</div>
+                <div data-speed="1.25">1.25x</div>
+                <div data-speed="1.0" class="active">1.0x</div>
+                <div data-speed="0.75">0.75x</div>
+                <div data-speed="0.5">0.5x</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="video-controls-bar" style="margin-top: 10px;">
+          <div class="playback-controls-row">
+            <div class="skip-controls">
+              <button id="skip-back-btn" class="skip-btn" title="Skip back 5s (←)">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="11 17 6 12 11 7"/></svg>
+                5s
+              </button>
+              <button id="skip-fwd-btn" class="skip-btn" title="Skip forward 5s (→)">
+                5s
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="13 7 18 12 13 17"/></svg>
+              </button>
+            </div>
+            <div class="speed-presets">
+              <button id="speed-learn" class="speed-preset-btn" data-speed="0.5" title="Half speed — break down the move">Learn</button>
+              <button id="speed-practice" class="speed-preset-btn" data-speed="0.75" title="3/4 speed — practice along">Practice</button>
+              <button id="speed-full" class="speed-preset-btn active" data-speed="1.0" title="Full speed">Full</button>
+            </div>
+          </div>
+          <label class="source-toggle">
+            <input type="checkbox" id="source-toggle-cb">
+            Use Bunny CDN (Faster Load)
+          </label>
+        </div>
+      </div>
+
+      <div id="video-info-wrapper">
+        <!-- Breadcrumb Navigation -->
+        <div id="video-header-container" style="display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 1px solid var(--border-light); padding-bottom: 15px; margin-bottom: 25px; flex-wrap: wrap; gap: 15px;">
+          <div>
+            <div id="breadcrumb-nav" class="breadcrumb-nav" style="margin-bottom: 8px; color: var(--text-muted); display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+              <a href="#" id="home-breadcrumb" style="color: var(--accent); text-decoration: none; transition: color 0.2s;">Library Home</a>
+              <span style="margin: 0 6px; color: var(--text-muted);">/</span>
+              <span id="video-breadcrumb">Select a video</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <h1 id="video-title" style="border: none; padding: 0; margin: 0; color: var(--text-main);">Select a video</h1>
+              <button id="fav-btn" class="fav-btn" title="Add to favorites" aria-label="Favorite">
+                <svg id="fav-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+              </button>
+            </div>
+          </div>
+          <div class="prev-next-controls" style="display: flex; gap: 10px;">
+            <button id="prev-video-btn" class="nav-btn" disabled>
+              <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 5px;"><polyline points="15 18 9 12 15 6"></polyline></svg> Previous
+            </button>
+            <button id="next-video-btn" class="nav-btn" disabled>
+              Next <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="margin-left: 5px;"><polyline points="9 18 15 12 9 6"></polyline></svg>
+            </button>
+          </div>
+        </div>
+        <div id="bookmarks-bar" class="bookmarks-bar" style="display: none;">
+          <div class="bookmarks-header">
+            <span class="bookmarks-label">Bookmarks</span>
+            <div style="display: flex; gap: 6px; align-items: center;">
+              <button class="bookmark-add-btn open-export-modal-btn" title="Export or import data" style="opacity: 0.6;">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -1px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Export
+              </button>
+              <button id="add-bookmark-btn" class="bookmark-add-btn" title="Bookmark current time">+ Add</button>
+            </div>
+          </div>
+          <div id="bookmarks-list" class="bookmarks-list"></div>
+          <div id="bookmark-edit-row" class="bookmark-edit-row" style="display: none;">
+            <span id="bookmark-edit-label" class="bookmark-edit-label"></span>
+            <input type="text" id="bookmark-edit-input" class="bookmark-edit-input" placeholder="Add a note (optional, Enter to save)" maxlength="120">
+          </div>
+        </div>
+        <div id="video-summary" class="markdown-body">
+          <!-- Summary injected via JS -->
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Settings Modal -->
+  <div id="settings-modal">
+    <div class="modal-content">
+      <h3>Settings</h3>
+      <div class="setting-row">
+        <label for="theme-select">Theme (Terminus Palettes)</label>
+        <select id="theme-select">
+          <option value="tokyo-night">Tokyo Night</option>
+          <option value="dracula">Dracula</option>
+          <option value="monokai">Monokai</option>
+          <option value="nord">Nord</option>
+          <option value="solarized-dark">Solarized Dark</option>
+          <option value="solarized-light">Solarized Light (Default)</option>
+          <option value="gruvbox">Gruvbox Dark</option>
+          <option value="material">Material</option>
+          <option value="one-dark">One Dark</option>
+          <option value="geist">Vercel Geist</option>
+          <option value="github-dark">GitHub Dark</option>
+          <option value="rose-pine">Rosé Pine</option>
+          <option value="catppuccin">Catppuccin Macchiato</option>
+          <option value="ayu-dark">Ayu Dark</option>
+          <option value="ayu-mirage">Ayu Mirage</option>
+          <option value="ayu-light">Ayu Light</option>
+          <option value="night-owl">Night Owl</option>
+          <option value="synthwave">SynthWave '84</option>
+          <option value="cobalt2">Cobalt2</option>
+          <option value="cyberpunk">Cyberpunk</option>
+          <option value="palenight">Palenight</option>
+          <option value="oceanic-next">Oceanic Next</option>
+          <option value="shades-of-purple">Shades of Purple</option>
+          <option value="winter-is-coming">Winter is Coming</option>
+          <option value="andromeda">Andromeda</option>
+          <option value="horizon">Horizon</option>
+          <option value="snazzy">Snazzy</option>
+          <option value="outrun">Outrun</option>
+          <option value="eva-dark">Eva Dark</option>
+          <option value="hopscotch">Hopscotch</option>
+          <option value="monokai-pro">Monokai Pro</option>
+          <option value="city-lights">City Lights</option>
+        </select>
+        <div class="theme-nav-row">
+          <button id="theme-prev" class="theme-nav-btn" title="Previous theme">&larr;</button>
+          <span id="theme-counter" class="theme-counter"></span>
+          <button id="theme-next" class="theme-nav-btn" title="Next theme">&rarr;</button>
+        </div>
+      </div>
+      <div class="setting-row" style="margin-top: 15px;">
+        <label for="bunny-lib-id" style="display:block; margin-bottom: 5px; color: var(--text-muted); font-size: 0.9rem;">Bunny CDN Pull Zone</label>
+        <input type="text" id="bunny-lib-id" placeholder="e.g. vz-xxxx.b-cdn.net" style="width: 100%; padding: 8px; background: var(--bg-base); border: 1px solid var(--border-light); color: var(--text-main); border-radius: 4px;">
+      </div>
+      <div class="setting-row" style="margin-top: 20px; border-top: 1px solid var(--border-light); padding-top: 15px;">
+        <label style="display:block; margin-bottom: 10px; color: var(--text-muted); font-size: 0.9rem;">Reset Data</label>
+        <div class="reset-buttons">
+          <button id="reset-watched" class="reset-btn">Clear Watch History</button>
+          <button id="reset-bookmarks" class="reset-btn">Clear All Bookmarks &amp; Notes</button>
+          <button id="reset-favorites" class="reset-btn">Clear Favorites</button>
+          <button id="reset-positions" class="reset-btn">Clear Resume Positions</button>
+          <button id="reset-all" class="reset-btn reset-btn-danger">Reset Everything</button>
+        </div>
+      </div>
+      <div class="setting-row" style="margin-top: 20px; border-top: 1px solid var(--border-light); padding-top: 15px;">
+        <label style="display:block; margin-bottom: 10px; color: var(--text-muted); font-size: 0.9rem;">Export / Import</label>
+        <div class="reset-buttons">
+          <button class="reset-btn open-export-modal-btn" style="background: var(--accent); color: var(--pill-text);">Export / Import Data</button>
+          <input type="file" id="import-file-input" accept=".json" style="display: none;">
+        </div>
+      </div>
+      <button class="close-modal" id="save-settings" style="margin-bottom: 10px;">Save & Close</button>
+      <button class="close-modal" id="close-settings" style="background: var(--bg-surface-hover);">Cancel</button>
+    </div>
+  </div>
+
+  <!-- Export / Import Modal -->
+  <div id="export-modal" class="help-modal" style="display:none;">
+    <div class="help-modal-content" style="max-width: 500px;">
+      <div class="help-modal-header">
+        <h3 id="export-modal-title">Export / Import</h3>
+        <button class="shortcuts-close" id="close-export-modal">&times;</button>
+      </div>
+      <div class="help-modal-body">
+        <div class="help-section">
+          <h4>Export</h4>
+          <p id="export-scope-label" style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 12px;"></p>
+          <div class="export-options">
+            <label class="export-option"><input type="checkbox" id="exp-bookmarks" checked> <span id="exp-bookmarks-label">Bookmarks &amp; notes</span></label>
+            <label class="export-option"><input type="checkbox" id="exp-summaries"> <span id="exp-summaries-label">Video summary</span></label>
+            <label class="export-option"><input type="checkbox" id="exp-favorites"> Favorites list</label>
+            <label class="export-option"><input type="checkbox" id="exp-watch-history"> Watch history &amp; progress</label>
+            <label class="export-option" id="exp-scope-toggle-wrap" style="margin-top: 4px; border-top: 1px solid var(--border-light); padding-top: 8px;">
+              <input type="checkbox" id="exp-entire-library"> Include entire library (not just this video)
+            </label>
+          </div>
+          <div class="export-format-row">
+            <span style="font-size: 0.8rem; color: var(--text-muted);">Format:</span>
+            <label class="export-format-label"><input type="radio" name="export-format" value="markdown" checked> Markdown</label>
+            <label class="export-format-label"><input type="radio" name="export-format" value="json"> JSON (backup)</label>
+          </div>
+          <button id="do-export" class="export-action-btn">Download</button>
+        </div>
+        <div class="help-section" style="margin-top: 8px;">
+          <h4>Import</h4>
+          <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 8px;">Restore from a previously exported JSON backup. This recovers:</p>
+          <ul style="font-size: 0.8rem; color: var(--text-muted); margin: 0 0 12px 16px; line-height: 1.8;">
+            <li>Bookmarks &amp; notes</li>
+            <li>Favorites</li>
+            <li>Watch history &amp; resume positions</li>
+            <li>Theme preference</li>
+          </ul>
+          <p style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 12px; opacity: 0.7;">Your existing data will be merged, not replaced — nothing will be lost.</p>
+          <button id="do-import" class="export-action-btn" style="background: var(--bg-surface-hover); color: var(--text-main);">Import JSON Backup</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Spotlight Search -->
+  <div id="spotlight-overlay" class="spotlight-overlay" style="display:none;">
+    <div class="spotlight-container">
+      <div class="spotlight-input-wrap">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.5;min-width:20px;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" id="spotlight-input" placeholder="Search videos..." autocomplete="off">
+        <kbd class="spotlight-kbd">Esc</kbd>
+      </div>
+      <div id="spotlight-results" class="spotlight-results"></div>
+    </div>
+  </div>
+
+  <!-- Keyboard Shortcuts Overlay -->
+  <div id="shortcuts-overlay" class="shortcuts-overlay" style="display:none;">
+    <div class="shortcuts-container">
+      <div class="shortcuts-header">
+        <h3>Keyboard Shortcuts</h3>
+        <button class="shortcuts-close" id="close-shortcuts">&times;</button>
+      </div>
+      <div class="shortcuts-grid">
+        <div class="shortcuts-section">
+          <h4>Playback</h4>
+          <div class="shortcut-row"><kbd>Space</kbd><span>Play / Pause</span></div>
+          <div class="shortcut-row"><kbd>&larr;</kbd><span>Skip back 5s</span></div>
+          <div class="shortcut-row"><kbd>&rarr;</kbd><span>Skip forward 5s</span></div>
+          <div class="shortcut-row"><kbd>M</kbd><span>Mirror video</span></div>
+          <div class="shortcut-row"><kbd>B</kbd><span>Add bookmark</span></div>
+        </div>
+        <div class="shortcuts-section">
+          <h4>A-B Loop</h4>
+          <div class="shortcut-row"><kbd>[</kbd><span>Set loop start (A)</span></div>
+          <div class="shortcut-row"><kbd>]</kbd><span>Set loop end (B)</span></div>
+          <div class="shortcut-row"><kbd>Esc</kbd><span>Clear loop</span></div>
+        </div>
+        <div class="shortcuts-section">
+          <h4>Navigation</h4>
+          <div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>K</kbd><span>Spotlight search</span></div>
+          <div class="shortcut-row"><kbd>?</kbd><span>This shortcuts panel</span></div>
+          <div class="shortcut-row"><kbd>T</kbd><span>Theater mode</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Help Guide Modal -->
+  <div id="help-modal" class="help-modal" style="display:none;">
+    <div class="help-modal-content">
+      <div class="help-modal-header">
+        <h3>Guide</h3>
+        <button class="shortcuts-close" id="close-help">&times;</button>
+      </div>
+      <div class="help-modal-body">
+        <div class="help-section">
+          <h4>&#9654; Video Player</h4>
+          <ul>
+            <li><strong>Speed control</strong> &mdash; Click the speed button (top-right of video) or use the Learn/Practice/Full presets below the player.</li>
+            <li><strong>Mirror mode</strong> &mdash; Flip the video horizontally so you can follow along as if looking in a mirror. Press <kbd>M</kbd> or click the mirror button.</li>
+            <li><strong>Skip buttons</strong> &mdash; Jump 5 seconds forward/back. Use the buttons or arrow keys.</li>
+            <li><strong>A-B Loop</strong> &mdash; Set a start point (A) and end point (B) to loop a section endlessly. Click the A button or press <kbd>[</kbd> then <kbd>]</kbd>. Press <kbd>Esc</kbd> to clear.</li>
+            <li><strong>Resume playback</strong> &mdash; Your position is saved automatically. Come back to any video and it picks up where you left off.</li>
+            <li><strong>Theater mode</strong> &mdash; Press <kbd>T</kbd> or click the expand button to go fullscreen with a dark backdrop. Press <kbd>Esc</kbd> to exit.</li>
+          </ul>
+        </div>
+        <div class="help-section">
+          <h4>&#9733; Bookmarks &amp; Notes</h4>
+          <ul>
+            <li><strong>Add a bookmark</strong> &mdash; Click "+ Add" below the video to bookmark the current timestamp.</li>
+            <li><strong>Add notes</strong> &mdash; After adding a bookmark, type a note (optional). You can also click the pencil icon on any bookmark to edit its note.</li>
+            <li><strong>Click a bookmark</strong> &mdash; Jumps to that exact timestamp in the video.</li>
+            <li><strong>Favorites</strong> &mdash; Click the star next to the video title to favorite it. Favorites appear at the top of your home page.</li>
+          </ul>
+        </div>
+        <div class="help-section">
+          <h4>&#128214; Notes Manager</h4>
+          <ul>
+            <li>Click the notebook icon in the sidebar to see all your bookmarks, notes, and favorites in one place.</li>
+            <li><strong>Search</strong> &mdash; Filter notes by typing in the search bar.</li>
+            <li><strong>Click any note</strong> &mdash; Loads the video and jumps to that exact timestamp.</li>
+            <li><strong>Edit/Delete</strong> &mdash; Use the pencil and &times; buttons to modify or remove entries.</li>
+            <li><strong>Filter</strong> &mdash; Toggle between "All" bookmarks or "With notes" only.</li>
+          </ul>
+        </div>
+        <div class="help-section">
+          <h4>&#128270; Navigation</h4>
+          <ul>
+            <li><strong>Sidebar search</strong> &mdash; Type in the search bar to filter the video library.</li>
+            <li><strong>Spotlight search</strong> &mdash; Press <kbd>Ctrl</kbd>+<kbd>K</kbd> (or <kbd>&#8984;</kbd>+<kbd>K</kbd>) for a fast floating search. Hit Enter to play.</li>
+            <li><strong>Breadcrumbs</strong> &mdash; Click any part of the breadcrumb trail to jump back to that folder level.</li>
+            <li><strong>Continue Watching</strong> &mdash; Videos you haven't finished appear on the home page with your saved position.</li>
+            <li><strong>Previous/Next</strong> &mdash; Navigate between videos in the same folder.</li>
+          </ul>
+        </div>
+        <div class="help-section">
+          <h4>&#127912; Themes &amp; Settings</h4>
+          <ul>
+            <li>Click the gear icon to open Settings. Choose from 30+ color themes.</li>
+            <li>Configure your Bunny CDN pull zone for faster streaming.</li>
+            <li>Reset watch history, bookmarks, favorites, or everything from Settings.</li>
+          </ul>
+        </div>
+        <div class="help-section">
+          <h4>&#9000; Keyboard Shortcuts</h4>
+          <ul>
+            <li>Press <kbd>?</kbd> anytime to see all keyboard shortcuts.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+  <script src="app.js"></script>
+  <script>if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});</script>
+</body>
+</html>

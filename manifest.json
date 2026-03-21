@@ -1,0 +1,16 @@
+{
+  "name": "Dance Masterclass Library",
+  "short_name": "Dance Library",
+  "description": "Personal dance video practice library with bookmarks, notes, and A-B loop",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#fdf6e3",
+  "theme_color": "#cb4b16",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💃</text></svg>",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

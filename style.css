@@ -511,7 +511,7 @@ body {
   position: relative;
   background-color: var(--bg-base);
   scroll-behavior: smooth;
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-bottom: 20px;
 }
 
 
@@ -580,7 +580,7 @@ body.sidebar-closed #mobile-header {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 18px;
-  padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: 20px;
 }
 
 .course-tile {
@@ -932,11 +932,12 @@ video, iframe {
   }
   
   #video-info-wrapper {
-    padding: 20px 15px calc(40px + env(safe-area-inset-bottom, 0px));
+    padding: 20px 15px 60px;
   }
   
   .course-grid {
     grid-template-columns: 1fr;
+    padding-bottom: 60px;
   }
   
   .video-controls-bar {

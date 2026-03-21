@@ -932,12 +932,12 @@ video, iframe {
   }
   
   #video-info-wrapper {
-    padding: 20px 15px max(48px, env(safe-area-inset-bottom, 48px));
+    padding: 20px 15px max(32px, env(safe-area-inset-bottom, 32px));
   }
 
   .course-grid {
     grid-template-columns: 1fr;
-    padding-bottom: max(48px, env(safe-area-inset-bottom, 48px));
+    padding-bottom: max(32px, env(safe-area-inset-bottom, 32px));
   }
   
   .video-controls-bar {
@@ -1789,7 +1789,7 @@ video.mirrored {
 
 @media (max-width: 768px) {
   .notes-view-inner {
-    padding: 20px 20px max(48px, env(safe-area-inset-bottom, 48px));
+    padding: 20px 20px max(32px, env(safe-area-inset-bottom, 32px));
   }
 
   .notes-video-group {

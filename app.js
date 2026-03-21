@@ -329,24 +329,31 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Update notes badge count
     function updateNotesBadge() {
-        const btn = document.getElementById('notes-sidebar-btn');
-        let badge = btn.querySelector('.notes-badge');
         const allBookmarks = safeLoad('videoBookmarks', {});
         let total = 0;
         for (const arr of Object.values(allBookmarks)) {
             if (Array.isArray(arr)) total += arr.length;
         }
         total += state.favorites.size;
-        if (total > 0) {
-            if (!badge) {
-                badge = document.createElement('span');
-                badge.className = 'notes-badge';
-                btn.style.position = 'relative';
-                btn.appendChild(badge);
+
+        const targets = [
+            document.getElementById('notes-sidebar-btn'),
+            document.getElementById('home-notes-btn')
+        ];
+        for (const btn of targets) {
+            if (!btn) continue;
+            let badge = btn.querySelector('.notes-badge');
+            if (total > 0) {
+                if (!badge) {
+                    badge = document.createElement('span');
+                    badge.className = 'notes-badge';
+                    btn.style.position = 'relative';
+                    btn.appendChild(badge);
+                }
+                badge.textContent = total > 99 ? '99+' : total;
+            } else if (badge) {
+                badge.remove();
             }
-            badge.textContent = total > 99 ? '99+' : total;
-        } else if (badge) {
-            badge.remove();
         }
     }
 

@@ -2295,13 +2295,20 @@ document.addEventListener('DOMContentLoaded', () => {
     // ── Help Guide Modal ─────────────────────────────────
     const helpModal = document.getElementById('help-modal');
 
-    document.getElementById('help-btn').addEventListener('click', () => {
+    const openHelpModal = () => {
         helpModal.style.display = 'flex';
         if (window.innerWidth <= 768) {
             elements.sidebar.classList.remove('open');
             document.body.classList.remove('sidebar-open');
         }
-    });
+    };
+    document.getElementById('help-btn').addEventListener('click', openHelpModal);
+    const homeHelpBtn = document.getElementById('home-help-btn');
+    if (homeHelpBtn) homeHelpBtn.addEventListener('click', openHelpModal);
+    const homeNotesBtn = document.getElementById('home-notes-btn');
+    if (homeNotesBtn) homeNotesBtn.addEventListener('click', () => showNotesView());
+    const homeSettingsBtn = document.getElementById('home-settings-btn');
+    if (homeSettingsBtn) homeSettingsBtn.addEventListener('click', () => { elements.settingsModal.style.display = 'flex'; });
 
     document.getElementById('close-help').addEventListener('click', () => {
         helpModal.style.display = 'none';

@@ -576,6 +576,27 @@ body.sidebar-closed #mobile-header {
   color: var(--text-main);
 }
 
+.home-help-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border-light);
+  background: var(--bg-surface);
+  color: var(--text-muted);
+  font-family: var(--font-main);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s, background 0.2s;
+}
+
+.home-help-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--bg-surface-hover);
+}
+
 .course-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));

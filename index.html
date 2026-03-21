@@ -216,7 +216,10 @@
   <!-- Settings Modal -->
   <div id="settings-modal">
     <div class="modal-content">
-      <h3>Settings</h3>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <h3 style="margin: 0;">Settings</h3>
+        <button class="shortcuts-close" id="close-settings-x" title="Close">&times;</button>
+      </div>
       <div class="setting-row">
         <label for="theme-select">Theme (Terminus Palettes)</label>
         <select id="theme-select">

@@ -336,6 +336,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         total += state.favorites.size;
 
+        const lastSeen = parseInt(localStorage.getItem('notesBadgeSeen') || '0', 10);
+        const unseen = Math.max(0, total - lastSeen);
+
         const targets = [
             document.getElementById('notes-sidebar-btn'),
             document.getElementById('home-notes-btn')
@@ -343,18 +346,29 @@ document.addEventListener('DOMContentLoaded', () => {
         for (const btn of targets) {
             if (!btn) continue;
             let badge = btn.querySelector('.notes-badge');
-            if (total > 0) {
+            if (unseen > 0) {
                 if (!badge) {
                     badge = document.createElement('span');
                     badge.className = 'notes-badge';
                     btn.style.position = 'relative';
                     btn.appendChild(badge);
                 }
-                badge.textContent = total > 99 ? '99+' : total;
+                badge.textContent = unseen > 99 ? '99+' : unseen;
             } else if (badge) {
                 badge.remove();
             }
         }
+    }
+
+    function markNotesSeen() {
+        const allBookmarks = safeLoad('videoBookmarks', {});
+        let total = 0;
+        for (const arr of Object.values(allBookmarks)) {
+            if (Array.isArray(arr)) total += arr.length;
+        }
+        total += state.favorites.size;
+        localStorage.setItem('notesBadgeSeen', total.toString());
+        updateNotesBadge();
     }
 
 
@@ -1153,6 +1167,11 @@ document.addEventListener('DOMContentLoaded', () => {
             elements.settingsModal.style.display = 'none';
         });
 
+        const closeSettingsX = document.getElementById('close-settings-x');
+        if (closeSettingsX) closeSettingsX.addEventListener('click', () => {
+            elements.settingsModal.style.display = 'none';
+        });
+
         elements.settingsModal.addEventListener('click', (e) => {
             if (e.target === elements.settingsModal) elements.settingsModal.style.display = 'none';
         });
@@ -1865,6 +1884,7 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.videoView.style.display = 'none';
         notesView.style.display = 'block';
         renderNotesView();
+        markNotesSeen();
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 

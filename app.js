@@ -1146,6 +1146,10 @@ document.addEventListener('DOMContentLoaded', () => {
             elements.settingsModal.style.display = 'none';
         });
 
+        elements.settingsModal.addEventListener('click', (e) => {
+            if (e.target === elements.settingsModal) elements.settingsModal.style.display = 'none';
+        });
+
         elements.saveSettings.addEventListener('click', () => {
             const inputVal = elements.bunnyLibInput.value.trim();
             if (inputVal && !inputVal.includes('.b-cdn.net')) {

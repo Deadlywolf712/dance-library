@@ -2480,6 +2480,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (historySidebarBtn) historySidebarBtn.addEventListener('click', showHistoryModal);
     const mobileHistoryBtn = document.getElementById('mobile-history-btn');
     if (mobileHistoryBtn) mobileHistoryBtn.addEventListener('click', showHistoryModal);
+    const homeHistoryBtn = document.getElementById('home-history-btn');
+    if (homeHistoryBtn) homeHistoryBtn.addEventListener('click', showHistoryModal);
 
     // ── Notes Modal Close ─────────────────────────────
     document.getElementById('close-notes-modal').addEventListener('click', closeNotesView);

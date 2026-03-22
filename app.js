@@ -253,7 +253,38 @@ document.addEventListener('DOMContentLoaded', () => {
                     const link = document.createElement('a');
                     link.className = `video-link ${state.watched.has(video.path) ? 'watched' : ''}`;
                     link.style.setProperty('--depth', depth); link.style.paddingLeft = `calc(40px + (var(--depth) * 12px))`;
-                    link.innerText = video.title;
+
+                    const titleSpan = document.createElement('span');
+                    titleSpan.className = 'video-link-title';
+                    titleSpan.textContent = video.title;
+
+                    const starBtn = document.createElement('span');
+                    starBtn.className = 'sidebar-fav-star';
+                    starBtn.title = state.favorites.has(video.path) ? 'Unfavorite' : 'Favorite';
+                    starBtn.innerHTML = state.favorites.has(video.path) ? '&#9733;' : '&#9734;';
+                    if (state.favorites.has(video.path)) starBtn.classList.add('active');
+                    starBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        if (state.favorites.has(video.path)) {
+                            state.favorites.delete(video.path);
+                            starBtn.innerHTML = '&#9734;';
+                            starBtn.classList.remove('active');
+                            starBtn.title = 'Favorite';
+                        } else {
+                            state.favorites.add(video.path);
+                            starBtn.innerHTML = '&#9733;';
+                            starBtn.classList.add('active');
+                            starBtn.title = 'Unfavorite';
+                        }
+                        localStorage.setItem('favoriteVideos', JSON.stringify([...state.favorites]));
+                        updateNotesBadge();
+                        // Update fav button if this is the current video
+                        if (state.currentVideo && state.currentVideo.path === video.path) updateFavBtn();
+                    });
+
+                    link.appendChild(titleSpan);
+                    link.appendChild(starBtn);
                     link.dataset.path = video.path;
                     link.addEventListener('click', () => loadVideo(video));
                     contentDiv.appendChild(link);

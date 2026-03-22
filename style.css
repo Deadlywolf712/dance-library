@@ -1690,16 +1690,18 @@ padding: 20px;
   }
 
   .overlay-btn {
-    padding: 5px 9px;
-    font-size: 0.75rem;
-    min-width: 40px;
-    min-height: 34px;
+    padding: 4px 7px;
+    font-size: 0.7rem;
+    min-width: 32px;
+    min-height: 28px;
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.15);
   }
 
   .player-overlay-controls {
-    top: 8px;
-    right: 8px;
-    gap: 4px;
+    top: 6px;
+    right: 6px;
+    gap: 3px;
   }
 
   .speed-dropdown div {
@@ -2503,19 +2505,19 @@ video.mirrored {
   }
 
   .skip-btn {
-    padding: 6px 10px;
-    font-size: 0.75rem;
-    min-height: 38px;
+    padding: 4px 8px;
+    font-size: 0.7rem;
+    min-height: 32px;
   }
 
   .speed-preset-btn {
-    padding: 6px 8px;
+    padding: 4px 8px;
     font-size: 0.7rem;
-    min-height: 38px;
+    min-height: 32px;
   }
 
   .speed-presets {
-    gap: 4px;
+    gap: 3px;
   }
 
   .resume-toast {

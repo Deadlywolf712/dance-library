@@ -365,7 +365,6 @@ document.addEventListener('DOMContentLoaded', () => {
         for (const arr of Object.values(allBookmarks)) {
             if (Array.isArray(arr)) total += arr.length;
         }
-        total += state.favorites.size;
 
         const lastSeen = parseInt(localStorage.getItem('notesBadgeSeen') || '0', 10);
         const unseen = Math.max(0, total - lastSeen);
@@ -2123,39 +2122,7 @@ document.addEventListener('DOMContentLoaded', () => {
             notesContent.appendChild(section);
         }
 
-        // ── Favorites Section ──
-        // Show current favorites + pending unfavorites (soft-deleted, shown muted)
-        const allFavPaths = new Set([...state.favorites, ...pendingUnfavorites]);
-        if (allFavPaths.size > 0) {
-            const section = document.createElement('div');
-            section.className = 'notes-section';
-            section.innerHTML = '<div class="notes-section-title">&#9733; Favorites</div>';
-
-            for (const favPath of allFavPaths) {
-                const videoObj = resolveVideoObj(favPath);
-                if (!videoObj) continue;
-                // Filter by search query — match path OR title
-                if (sq && !favPath.toLowerCase().includes(sq) && !videoObj.title.toLowerCase().includes(sq)) continue;
-
-                const isUnfavorited = pendingUnfavorites.has(favPath);
-                const item = document.createElement('div');
-                item.className = 'notes-fav-item' + (isUnfavorited ? ' notes-fav-removed' : '');
-                item.dataset.path = favPath;
-                item.innerHTML = `
-                    <span class="notes-fav-star">${isUnfavorited ? '&#9734;' : '&#9733;'}</span>
-                    <div style="flex:1;min-width:0;">
-                        <div class="notes-fav-title">${videoObj.title}</div>
-                        <div class="notes-fav-path">${videoObj.folderPath}</div>
-                    </div>
-                    <button class="notes-fav-toggle" data-path="${favPath}" title="${isUnfavorited ? 'Re-favorite' : 'Remove from favorites'}">
-                        ${isUnfavorited ? 'Re-favorite' : 'Unfavorite'}
-                    </button>
-                `;
-                section.appendChild(item);
-            }
-
-            notesContent.appendChild(section);
-        }
+        // Favorites are now in their own separate modal
 
         // ── Empty State ──
         if (bookmarkPaths.length === 0 && allFavPaths.size === 0) {
@@ -2269,36 +2236,6 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        // Favorite toggle button
-        const favToggle = e.target.closest('.notes-fav-toggle');
-        if (favToggle) {
-            e.stopPropagation();
-            const path = favToggle.dataset.path;
-            if (pendingUnfavorites.has(path)) {
-                // Re-favorite
-                pendingUnfavorites.delete(path);
-                state.favorites.add(path);
-            } else {
-                // Soft unfavorite
-                pendingUnfavorites.add(path);
-                state.favorites.delete(path);
-            }
-            localStorage.setItem('favoriteVideos', JSON.stringify([...state.favorites]));
-            renderNotesView();
-            return;
-        }
-
-        // Favorite item → load video (only if not unfavorited)
-        const favItem = e.target.closest('.notes-fav-item');
-        if (favItem) {
-            if (favItem.classList.contains('notes-fav-removed')) return;
-            const videoObj = resolveVideoObj(favItem.dataset.path);
-            if (videoObj) {
-                closeNotesView();
-                loadVideo(videoObj);
-            }
-            return;
-        }
     }
 
     // Notes view click delegation — bound once
@@ -2575,6 +2512,111 @@ document.addEventListener('DOMContentLoaded', () => {
     const homeHistoryBtn = document.getElementById('home-history-btn');
     if (homeHistoryBtn) homeHistoryBtn.addEventListener('click', showHistoryModal);
 
+    // ── Favorites Modal ─────────────────────────────
+    const favoritesModal = document.getElementById('favorites-modal');
+    const favoritesContent = document.getElementById('favorites-content');
+    let favSearchQuery = '';
+    let favPendingUnfavs = new Set();
+
+    function renderFavoritesList() {
+        const sq = favSearchQuery;
+        const allFavPaths = new Set([...state.favorites, ...favPendingUnfavs]);
+
+        if (allFavPaths.size === 0) {
+            favoritesContent.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 40px 0;">No favorites yet. Star a video to add it here.</p>';
+            return;
+        }
+
+        let html = '';
+        let matchCount = 0;
+        for (const favPath of allFavPaths) {
+            const videoObj = resolveVideoObj(favPath);
+            if (!videoObj) continue;
+            if (sq && !favPath.toLowerCase().includes(sq) && !videoObj.title.toLowerCase().includes(sq)) continue;
+            matchCount++;
+
+            const isUnfavorited = favPendingUnfavs.has(favPath);
+            html += `<div class="notes-fav-item ${isUnfavorited ? 'notes-fav-removed' : ''}" data-path="${favPath}">
+                <span class="notes-fav-star">${isUnfavorited ? '&#9734;' : '&#9733;'}</span>
+                <div style="flex:1;min-width:0;">
+                    <div class="notes-fav-title">${videoObj.title}</div>
+                    <div class="notes-fav-path">${videoObj.folderPath}</div>
+                </div>
+                <button class="notes-fav-toggle" data-path="${favPath}" title="${isUnfavorited ? 'Re-favorite' : 'Remove from favorites'}">
+                    ${isUnfavorited ? 'Re-favorite' : 'Unfavorite'}
+                </button>
+            </div>`;
+        }
+
+        if (matchCount === 0) {
+            favoritesContent.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 40px 0;">No matching favorites.</p>';
+        } else {
+            favoritesContent.innerHTML = html;
+        }
+    }
+
+    // Click handler (delegated)
+    favoritesContent.addEventListener('click', (e) => {
+        // Toggle unfavorite/re-favorite
+        const toggle = e.target.closest('.notes-fav-toggle');
+        if (toggle) {
+            e.stopPropagation();
+            const path = toggle.dataset.path;
+            if (favPendingUnfavs.has(path)) {
+                favPendingUnfavs.delete(path);
+                state.favorites.add(path);
+            } else {
+                favPendingUnfavs.add(path);
+                state.favorites.delete(path);
+            }
+            localStorage.setItem('favoriteVideos', JSON.stringify([...state.favorites]));
+            updateNotesBadge();
+            if (state.currentVideo && state.currentVideo.path === path) updateFavBtn();
+            renderFavoritesList();
+            return;
+        }
+        // Click item to load video
+        const item = e.target.closest('.notes-fav-item');
+        if (item && !item.classList.contains('notes-fav-removed')) {
+            const videoObj = resolveVideoObj(item.dataset.path);
+            if (videoObj) {
+                favoritesModal.style.display = 'none';
+                loadVideo(videoObj);
+            }
+        }
+    });
+
+    const favSearchInput = document.getElementById('favorites-search-input');
+    favSearchInput.addEventListener('input', () => {
+        favSearchQuery = favSearchInput.value.trim().toLowerCase();
+        renderFavoritesList();
+    });
+
+    function showFavoritesModal() {
+        favSearchQuery = '';
+        favSearchInput.value = '';
+        favPendingUnfavs = new Set();
+        renderFavoritesList();
+        favoritesModal.style.display = 'flex';
+    }
+
+    function closeFavoritesModal() {
+        favoritesModal.style.display = 'none';
+    }
+
+    document.getElementById('close-favorites-modal').addEventListener('click', closeFavoritesModal);
+    favoritesModal.addEventListener('click', (e) => {
+        if (e.target === favoritesModal) closeFavoritesModal();
+    });
+
+    // Wire up all favorites buttons
+    const favsSidebarBtn = document.getElementById('favs-sidebar-btn');
+    if (favsSidebarBtn) favsSidebarBtn.addEventListener('click', showFavoritesModal);
+    const mobileFavsBtn = document.getElementById('mobile-favs-btn');
+    if (mobileFavsBtn) mobileFavsBtn.addEventListener('click', showFavoritesModal);
+    const homeFavsBtn = document.getElementById('home-favs-btn');
+    if (homeFavsBtn) homeFavsBtn.addEventListener('click', showFavoritesModal);
+
     // ── Notes Modal Close ─────────────────────────────
     document.getElementById('close-notes-modal').addEventListener('click', closeNotesView);
     notesView.addEventListener('click', (e) => {
@@ -2655,6 +2697,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 if (historyModal.style.display !== 'none') {
                     closeHistoryModal();
+                    return;
+                }
+                if (favoritesModal.style.display !== 'none') {
+                    closeFavoritesModal();
                     return;
                 }
                 if (exportModal.style.display !== 'none') {

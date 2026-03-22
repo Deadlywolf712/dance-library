@@ -634,7 +634,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        // Recent Notes section at root level
+        // Recent Notes section at root level — grouped by video, showing actual note text
         if (path.length === 0) {
             const allBookmarks = safeLoad('videoBookmarks', {});
             const notedVideos = [];
@@ -646,30 +646,60 @@ document.addEventListener('DOMContentLoaded', () => {
                     const parts = vPath.split('/');
                     const filename = parts.pop();
                     const title = filename.replace(/\.(mp4|mov)$/i, '');
-                    notedVideos.push({ path: vPath, title, folder: parts.join(' / '), noteCount: withNotes.length, bookmarkCount: bks.length });
+                    notedVideos.push({ path: vPath, title, folder: parts.join(' / '), notes: withNotes });
                 }
             }
             if (notedVideos.length > 0) {
-                notedVideos.sort((a, b) => b.noteCount - a.noteCount);
+                notedVideos.sort((a, b) => b.notes.length - a.notes.length);
                 const { wrapper: notesWrapper, content: notesContent } = createCollapsibleSection('recent-notes', '&#128221;', 'Recent Notes');
                 elements.courseGrid.appendChild(notesWrapper);
 
                 for (const nv of notedVideos.slice(0, 6)) {
-                    const tile = document.createElement('div');
-                    tile.className = 'course-tile';
-                    tile.style.animationDelay = `${tileIndex * 0.04}s`;
-                    tile.style.backgroundColor = 'var(--bg-base)';
-                    tile.innerHTML = `
-                        <div style="display: flex; align-items: flex-start; margin-bottom: 2px;">
-                            <span style="margin-right:10px; min-width:20px; margin-top: 2px; font-size: 1rem;">&#128221;</span>
-                            <h3 class="video-tile-title" style="margin-bottom: 0; color: var(--text-main); font-weight: normal; line-height: 1.4;">${nv.title}</h3>
-                        </div>
-                        <p style="font-size: 0.75rem; color: var(--text-muted); margin: 4px 0 0 0;">${nv.noteCount} note${nv.noteCount > 1 ? 's' : ''} · ${nv.bookmarkCount} bookmark${nv.bookmarkCount > 1 ? 's' : ''}</p>
-                        <p style="font-size: 0.7rem; color: var(--text-muted); margin-top: 4px; opacity: 0.7;">${nv.folder}</p>
-                    `;
                     const info = videoData[nv.path];
-                    tile.addEventListener('click', () => loadVideo({ title: nv.title, path: nv.path, ...info }));
-                    notesContent.appendChild(tile);
+                    const videoObj = { title: nv.title, path: nv.path, ...info };
+
+                    const card = document.createElement('div');
+                    card.className = 'course-tile recent-notes-card';
+                    card.style.animationDelay = `${tileIndex * 0.04}s`;
+                    card.style.backgroundColor = 'var(--bg-base)';
+
+                    // Video title header (clickable → load video)
+                    let notesHtml = `<div class="recent-notes-video-title" data-path="${nv.path}">${nv.title}</div>`;
+                    notesHtml += `<div style="font-size: 0.7rem; color: var(--text-muted); opacity: 0.6; margin-bottom: 8px;">${nv.folder}</div>`;
+
+                    // Individual notes (clickable → seek to timestamp)
+                    for (const note of nv.notes) {
+                        const escapedNote = (note.n || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                        notesHtml += `<div class="recent-note-entry" data-path="${nv.path}" data-time="${note.t}">
+                            <span style="color: var(--accent); font-size: 0.7rem; flex-shrink: 0;">${formatTime(note.t)}</span>
+                            <span style="font-size: 0.8rem; color: var(--text-main);">"${escapedNote}"</span>
+                        </div>`;
+                    }
+
+                    card.innerHTML = notesHtml;
+
+                    // Click delegation
+                    card.addEventListener('click', (e) => {
+                        const noteEntry = e.target.closest('.recent-note-entry');
+                        if (noteEntry) {
+                            const seekTime = parseFloat(noteEntry.dataset.time);
+                            skipNextResume = true;
+                            loadVideo(videoObj);
+                            const onReady = () => {
+                                elements.videoPlayer.currentTime = seekTime;
+                                elements.videoPlayer.removeEventListener('loadedmetadata', onReady);
+                            };
+                            elements.videoPlayer.addEventListener('loadedmetadata', onReady);
+                            return;
+                        }
+                        const titleEl = e.target.closest('.recent-notes-video-title');
+                        if (titleEl) {
+                            loadVideo(videoObj);
+                            return;
+                        }
+                    });
+
+                    notesContent.appendChild(card);
                     tileIndex++;
                 }
                 notesWrapper.appendChild(notesContent);
@@ -2248,6 +2278,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     localStorage.setItem('videoBookmarks', JSON.stringify(allBk));
                 }
                 renderNotesView();
+                if (elements.homeView.style.display !== 'none') renderHomeTiles(null, []);
             };
 
             input.addEventListener('keydown', (ev) => {
@@ -2278,6 +2309,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             localStorage.setItem('videoBookmarks', JSON.stringify(allBk));
             renderNotesView();
+            updateNotesBadge();
+            if (elements.homeView.style.display !== 'none') renderHomeTiles(null, []);
             return;
         }
 

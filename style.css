@@ -2095,6 +2095,35 @@ video.mirrored {
 .history-item:last-child {
   border-bottom: none;
 }
+
+.recent-notes-card {
+  padding: 16px 20px !important;
+}
+.recent-notes-video-title {
+  font-weight: 600;
+  color: var(--text-main);
+  font-size: 0.95rem;
+  cursor: pointer;
+  margin-bottom: 2px;
+  transition: color 0.15s;
+}
+.recent-notes-video-title:hover {
+  color: var(--accent);
+}
+.recent-note-entry {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  padding: 4px 0;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+.recent-note-entry:hover {
+  background: var(--bg-surface);
+  padding: 4px 6px;
+  margin: 0 -6px;
+}
 .history-item:hover {
   background-color: var(--bg-surface);
   border-radius: 6px;

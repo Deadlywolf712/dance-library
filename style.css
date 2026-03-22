@@ -2084,6 +2084,21 @@ video.mirrored {
   padding: 20px 24px 24px;
 }
 
+.history-item {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border-light);
+  transition: background-color 0.15s ease;
+}
+.history-item:last-child {
+  border-bottom: none;
+}
+.history-item:hover {
+  background-color: var(--bg-surface);
+  border-radius: 6px;
+  padding: 12px 10px;
+  margin: 0 -10px;
+}
+
 .notes-section {
   margin-bottom: 40px;
 }

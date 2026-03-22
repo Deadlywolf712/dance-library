@@ -951,9 +951,10 @@ body {
   text-overflow: ellipsis;
 }
 .sidebar-fav-star {
-  font-size: 0.85rem;
+  font-size: 1rem;
   color: var(--text-muted);
-  opacity: 0.5;
+  opacity: 0.6;
+  -webkit-text-stroke: 0.5px currentColor;
   cursor: pointer;
   padding: 2px 4px;
   margin-left: 6px;

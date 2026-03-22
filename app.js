@@ -2409,60 +2409,79 @@ document.addEventListener('DOMContentLoaded', () => {
     const historyModal = document.getElementById('history-modal');
     const historyContent = document.getElementById('history-content');
 
-    function showHistoryModal() {
-        // Build sorted list of all watched videos
+    let historySearchQuery = '';
+
+    function renderHistoryList() {
+        const sq = historySearchQuery;
         const entries = [...state.watched]
             .filter(p => videoData[p])
             .map(p => ({ path: p, lastWatched: state.lastWatched[p] || 0 }))
             .sort((a, b) => b.lastWatched - a.lastWatched);
 
-        if (entries.length === 0) {
-            historyContent.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 40px 0;">No videos watched yet.</p>';
-        } else {
-            let html = '';
-            for (const entry of entries) {
-                const info = videoData[entry.path];
-                if (!info) continue;
-                const parts = entry.path.split('/');
-                const filename = parts.pop();
-                const title = filename.replace(/\.(mp4|mov)$/i, '');
-                const folder = parts.join(' / ');
-                const ago = entry.lastWatched ? timeAgo(entry.lastWatched) : '';
-                const positions = safeLoad('videoPositions', {});
-                const resumeTime = positions[entry.path];
-                const resumeStr = resumeTime ? formatTime(resumeTime) : '';
+        const filtered = sq ? entries.filter(e => e.path.toLowerCase().includes(sq)) : entries;
 
-                html += `<div class="history-item" data-path="${entry.path}" style="cursor: pointer;">
-                    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 10px;">
-                        <div style="min-width: 0; flex: 1;">
-                            <div style="font-weight: 500; color: var(--text-main); margin-bottom: 2px; word-break: break-word;">${title}</div>
-                            <div style="font-size: 0.75rem; color: var(--text-muted); opacity: 0.7;">${folder}</div>
-                        </div>
-                        <div style="text-align: right; flex-shrink: 0;">
-                            ${ago ? `<div style="font-size: 0.75rem; color: var(--text-muted);">${ago}</div>` : ''}
-                            ${resumeStr ? `<div style="font-size: 0.7rem; color: var(--accent); margin-top: 2px;">at ${resumeStr}</div>` : ''}
-                        </div>
-                    </div>
-                </div>`;
-            }
-            historyContent.innerHTML = html;
+        if (filtered.length === 0) {
+            historyContent.innerHTML = sq
+                ? '<p style="color: var(--text-muted); text-align: center; padding: 40px 0;">No matching videos.</p>'
+                : '<p style="color: var(--text-muted); text-align: center; padding: 40px 0;">No videos watched yet.</p>';
+            return;
         }
 
-        // Click to load video
-        historyContent.addEventListener('click', (e) => {
-            const item = e.target.closest('.history-item');
-            if (!item) return;
-            const path = item.dataset.path;
-            const info = videoData[path];
-            if (!info) return;
-            const parts = path.split('/');
+        const positions = safeLoad('videoPositions', {});
+        let html = '';
+        for (const entry of filtered) {
+            const info = videoData[entry.path];
+            if (!info) continue;
+            const parts = entry.path.split('/');
             const filename = parts.pop();
             const title = filename.replace(/\.(mp4|mov)$/i, '');
-            const videoObj = { title, path, ...info };
-            historyModal.style.display = 'none';
-            loadVideo(videoObj);
-        });
+            const folder = parts.join(' / ');
+            const ago = entry.lastWatched ? timeAgo(entry.lastWatched) : '';
+            const resumeTime = positions[entry.path];
+            const resumeStr = resumeTime ? formatTime(resumeTime) : '';
 
+            html += `<div class="history-item" data-path="${entry.path}" style="cursor: pointer;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 10px;">
+                    <div style="min-width: 0; flex: 1;">
+                        <div style="font-weight: 500; color: var(--text-main); margin-bottom: 2px; word-break: break-word;">${title}</div>
+                        <div style="font-size: 0.75rem; color: var(--text-muted); opacity: 0.7;">${folder}</div>
+                    </div>
+                    <div style="text-align: right; flex-shrink: 0;">
+                        ${ago ? `<div style="font-size: 0.75rem; color: var(--text-muted);">${ago}</div>` : ''}
+                        ${resumeStr ? `<div style="font-size: 0.7rem; color: var(--accent); margin-top: 2px;">at ${resumeStr}</div>` : ''}
+                    </div>
+                </div>
+            </div>`;
+        }
+        historyContent.innerHTML = html;
+    }
+
+    // Click to load video (delegated, bound once)
+    historyContent.addEventListener('click', (e) => {
+        const item = e.target.closest('.history-item');
+        if (!item) return;
+        const path = item.dataset.path;
+        const info = videoData[path];
+        if (!info) return;
+        const parts = path.split('/');
+        const filename = parts.pop();
+        const title = filename.replace(/\.(mp4|mov)$/i, '');
+        const videoObj = { title, path, ...info };
+        historyModal.style.display = 'none';
+        loadVideo(videoObj);
+    });
+
+    // Search input
+    const historySearchInput = document.getElementById('history-search-input');
+    historySearchInput.addEventListener('input', () => {
+        historySearchQuery = historySearchInput.value.trim().toLowerCase();
+        renderHistoryList();
+    });
+
+    function showHistoryModal() {
+        historySearchQuery = '';
+        historySearchInput.value = '';
+        renderHistoryList();
         historyModal.style.display = 'flex';
     }
 

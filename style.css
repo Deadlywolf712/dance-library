@@ -3109,6 +3109,75 @@ video.mirrored {
   text-align: center;
 }
 
+.theme-fav-btn {
+  background: none;
+  border: 1px solid var(--border-light);
+  color: var(--text-muted);
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  font-size: 1.1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s, border-color 0.15s, transform 0.15s;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+.theme-fav-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.theme-fav-btn.active {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.theme-fav-btn:active {
+  transform: scale(0.9);
+}
+
+.fav-themes-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-light);
+}
+.fav-theme-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  border-radius: 20px;
+  background: var(--bg-surface);
+  color: var(--text-main);
+  border: 1px solid var(--border-light);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.fav-theme-chip:hover {
+  border-color: var(--accent);
+  background: var(--bg-surface-hover);
+}
+.fav-theme-chip.current {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 500;
+}
+.fav-theme-remove {
+  font-size: 0.85rem;
+  opacity: 0.5;
+  cursor: pointer;
+  margin-left: 2px;
+  transition: opacity 0.15s;
+}
+.fav-theme-remove:hover {
+  opacity: 1;
+}
+
 /* ── Salsa Masterclass Course Styling ── */
 .course-intro-block {
   grid-column: 1 / -1;

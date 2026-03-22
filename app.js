@@ -1233,7 +1233,7 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.themeSelect.addEventListener('change', (e) => {
             state.theme = e.target.value;
             applyTheme(state.theme);
-            updateThemeCounter();
+            onThemeChanged();
         });
 
         // Theme prev/next navigation
@@ -1244,6 +1244,12 @@ document.addEventListener('DOMContentLoaded', () => {
             themeCounter.textContent = (idx + 1) + ' / ' + opts.length;
         }
 
+        let themeFavBtn = null; // initialized later
+        function onThemeChanged() {
+            updateThemeCounter();
+            if (themeFavBtn) { updateThemeFavBtn(); renderFavThemes(); }
+        }
+
         function cycleTheme(direction) {
             const opts = elements.themeSelect.options;
             let idx = elements.themeSelect.selectedIndex + direction;
@@ -1252,12 +1258,79 @@ document.addEventListener('DOMContentLoaded', () => {
             elements.themeSelect.selectedIndex = idx;
             state.theme = opts[idx].value;
             applyTheme(state.theme);
-            updateThemeCounter();
+            onThemeChanged();
         }
 
         document.getElementById('theme-prev').addEventListener('click', () => cycleTheme(-1));
         document.getElementById('theme-next').addEventListener('click', () => cycleTheme(1));
         updateThemeCounter();
+
+        // Favorite themes
+        const favThemes = new Set(safeLoad('favoriteThemes', []));
+        const favThemesRow = document.getElementById('fav-themes-row');
+        themeFavBtn = document.getElementById('theme-fav-btn');
+
+        function renderFavThemes() {
+            if (favThemes.size === 0) {
+                favThemesRow.style.display = 'none';
+                return;
+            }
+            favThemesRow.style.display = 'flex';
+            let html = '';
+            for (const tv of favThemes) {
+                // Find the display name from the select options
+                const opt = [...elements.themeSelect.options].find(o => o.value === tv);
+                const label = opt ? opt.textContent : tv;
+                const isCurrent = state.theme === tv;
+                html += `<span class="fav-theme-chip ${isCurrent ? 'current' : ''}" data-theme="${tv}">${label}<span class="fav-theme-remove" data-theme="${tv}" title="Remove">&times;</span></span>`;
+            }
+            favThemesRow.innerHTML = html;
+        }
+
+        function updateThemeFavBtn() {
+            const isFav = favThemes.has(state.theme);
+            themeFavBtn.innerHTML = isFav ? '&#9733;' : '&#9734;';
+            themeFavBtn.classList.toggle('active', isFav);
+            themeFavBtn.title = isFav ? 'Unfavorite this theme' : 'Favorite this theme';
+        }
+
+        themeFavBtn.addEventListener('click', () => {
+            if (favThemes.has(state.theme)) {
+                favThemes.delete(state.theme);
+            } else {
+                favThemes.add(state.theme);
+            }
+            localStorage.setItem('favoriteThemes', JSON.stringify([...favThemes]));
+            updateThemeFavBtn();
+            renderFavThemes();
+        });
+
+        favThemesRow.addEventListener('click', (e) => {
+            // Remove button
+            const removeBtn = e.target.closest('.fav-theme-remove');
+            if (removeBtn) {
+                e.stopPropagation();
+                favThemes.delete(removeBtn.dataset.theme);
+                localStorage.setItem('favoriteThemes', JSON.stringify([...favThemes]));
+                updateThemeFavBtn();
+                renderFavThemes();
+                return;
+            }
+            // Click chip to apply theme
+            const chip = e.target.closest('.fav-theme-chip');
+            if (chip) {
+                const tv = chip.dataset.theme;
+                state.theme = tv;
+                applyTheme(tv);
+                elements.themeSelect.value = tv;
+                updateThemeCounter();
+                updateThemeFavBtn();
+                renderFavThemes();
+            }
+        });
+
+        renderFavThemes();
+        updateThemeFavBtn();
 
         // Reset buttons
         function confirmAndReset(msg, action) {

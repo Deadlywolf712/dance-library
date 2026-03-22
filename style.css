@@ -2433,7 +2433,7 @@ video.mirrored {
 
 .collapsible-header {
   cursor: pointer;
-  justify-content: space-between;
+  justify-content: flex-start;
   user-select: none;
   transition: opacity 0.15s, font-size 0.15s, padding 0.15s;
 }
@@ -2446,8 +2446,9 @@ video.mirrored {
   opacity: 0.6;
 }
 .section-toggle-arrow {
-  font-size: 0.7rem;
+  font-size: 0.6rem;
   opacity: 0.5;
+  margin-left: 8px;
 }
 .home-section-content {
   display: contents;

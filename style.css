@@ -1095,7 +1095,7 @@ body.sidebar-closed #mobile-header {
 .course-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 10px;
+  gap: 8px;
   padding-bottom: 24px;
 }
 
@@ -1104,7 +1104,7 @@ body.sidebar-closed #mobile-header {
   background-color: var(--bg-surface);
   border: 1px solid var(--border-light);
   border-radius: 8px;
-  padding: 14px 16px;
+  padding: 12px 14px;
   cursor: pointer;
   transition: transform 0.2s cubic-bezier(0.33, 1, 0.68, 1), border-color 0.2s ease, box-shadow 0.25s ease;
   display: flex;
@@ -2121,10 +2121,8 @@ video.mirrored {
   min-width: 0;
 }
 .recent-note-entry span:last-child {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   min-width: 0;
+  word-break: break-word;
 }
 .recent-note-entry:hover {
   background: var(--bg-surface);
@@ -2223,6 +2221,8 @@ video.mirrored {
   font-size: 0.85rem;
   color: var(--text-main);
   line-height: 1.4;
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .notes-bookmark-notext {
@@ -2458,10 +2458,10 @@ video.mirrored {
 
 .favorites-section-header {
   grid-column: 1 / -1;
-  font-size: 1.1rem;
+  font-size: 1rem;
   font-weight: 600;
   color: var(--accent);
-  padding: 4px 0;
+  padding: 0;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -2477,13 +2477,13 @@ video.mirrored {
   opacity: 0.8;
 }
 .home-section-wrapper.collapsed .collapsible-header {
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   padding: 0;
-  opacity: 0.5;
-  margin-bottom: -6px;
+  opacity: 0.45;
+  margin-bottom: -8px;
 }
 .home-section-wrapper.collapsed + .favorites-divider {
-  margin: 0;
+  margin: -2px 0 0;
 }
 .section-toggle-arrow {
   font-size: 0.6rem;
@@ -2502,7 +2502,7 @@ video.mirrored {
   grid-column: 1 / -1;
   height: 1px;
   background: var(--border-light);
-  margin: 2px 0;
+  margin: 0;
 }
 
 .fav-tile {

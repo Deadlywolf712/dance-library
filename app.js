@@ -2127,11 +2127,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 totalNotes += arr.filter(b => b.n).length;
             }
         }
-        const favCount = state.favorites.size;
         const subtitleParts = [];
         if (totalNotes > 0) subtitleParts.push(totalNotes + ' note' + (totalNotes !== 1 ? 's' : ''));
         if (totalBookmarks > 0) subtitleParts.push(totalBookmarks + ' bookmark' + (totalBookmarks !== 1 ? 's' : ''));
-        if (favCount > 0) subtitleParts.push(favCount + ' favorite' + (favCount !== 1 ? 's' : ''));
         notesSubtitle.textContent = subtitleParts.length > 0 ? subtitleParts.join(' \u00B7 ') : '';
 
         // Search query from notes search bar

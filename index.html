@@ -103,24 +103,7 @@
       </div>
     </div>
 
-    <!-- Notes & Favorites View -->
-    <div id="notes-view" style="display: none;">
-      <div class="notes-view-inner">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
-          <h1 class="home-title" style="margin-bottom: 0;">My Notes</h1>
-          <button class="bookmark-add-btn open-export-modal-btn" title="Export or import data" style="opacity: 0.7; font-size: 0.75rem;">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -1px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Export / Import
-          </button>
-        </div>
-        <p id="notes-subtitle" style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 15px;"></p>
-        <div class="notes-search-wrap">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.4;min-width:16px;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input type="text" id="notes-search-input" placeholder="Search notes, bookmarks, favorites..." autocomplete="off">
-        </div>
-        <div id="notes-content"></div>
-      </div>
-    </div>
+    <!-- Notes view placeholder (actual notes view is a modal overlay outside main-content) -->
 
     <!-- Video View -->
     <div id="video-view">
@@ -223,6 +206,30 @@
     </div>
 
   </main>
+
+  <!-- Notes & Favorites Modal Overlay -->
+  <div id="notes-view" class="notes-modal-overlay" style="display: none;">
+    <div class="notes-modal-content">
+      <div class="notes-modal-header">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; width: 100%;">
+          <h2 style="margin: 0; font-family: var(--font-display); font-weight: 600; color: var(--text-main); font-size: 1.3rem;">My Notes</h2>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <button class="bookmark-add-btn open-export-modal-btn" title="Export or import data" style="opacity: 0.7; font-size: 0.75rem;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -1px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Export / Import
+            </button>
+            <button class="shortcuts-close" id="close-notes-modal" title="Close">&times;</button>
+          </div>
+        </div>
+        <p id="notes-subtitle" style="color: var(--text-muted); font-size: 0.85rem; margin: 8px 0 0 0;"></p>
+      </div>
+      <div class="notes-search-wrap">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.4;min-width:16px;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" id="notes-search-input" placeholder="Search notes, bookmarks, favorites..." autocomplete="off">
+      </div>
+      <div id="notes-content" style="overflow-y: auto; flex: 1;"></div>
+    </div>
+  </div>
 
   <!-- Settings Modal -->
   <div id="settings-modal">

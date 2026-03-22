@@ -286,7 +286,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 // Switch View
                 elements.videoView.style.display = 'none';
-                document.getElementById('notes-view').style.display = 'none';
+                closeNotesView();
                 elements.homeView.style.display = 'block';
                 document.querySelectorAll('.video-link').forEach(l => l.classList.remove('active'));
                 state.currentVideo = null;
@@ -724,7 +724,7 @@ document.addEventListener('DOMContentLoaded', () => {
             elements.nextBtn.disabled = true;
         }
         elements.homeView.style.display = 'none';
-        document.getElementById('notes-view').style.display = 'none';
+        closeNotesView();
         elements.videoView.style.display = 'flex';
 
         // Update URL/Video Source
@@ -812,7 +812,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 // Switch Views
                 elements.videoView.style.display = 'none';
-                document.getElementById('notes-view').style.display = 'none';
+                closeNotesView();
                 elements.homeView.style.display = 'block';
                 
                 // Uncheck active states in sidebar
@@ -986,7 +986,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Go Home helper
         function goHome() {
             elements.videoView.style.display = 'none';
-            document.getElementById('notes-view').style.display = 'none';
+            closeNotesView();
             elements.homeView.style.display = 'block';
             if (elements.videoPlayer && !elements.videoPlayer.paused) elements.videoPlayer.pause();
             if (hls) {
@@ -1878,18 +1878,19 @@ document.addEventListener('DOMContentLoaded', () => {
     const notesSubtitle = document.getElementById('notes-subtitle');
 
     function showNotesView() {
-        // Stop video if playing
+        // Pause video but DON'T hide any views — notes is now a modal overlay
         if (elements.videoPlayer && !elements.videoPlayer.paused) elements.videoPlayer.pause();
 
         // Reset soft-delete state for fresh session
         pendingUnfavorites = new Set();
 
-        elements.homeView.style.display = 'none';
-        elements.videoView.style.display = 'none';
-        notesView.style.display = 'block';
+        notesView.style.display = 'flex';
         renderNotesView();
         markNotesSeen();
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function closeNotesView() {
+        notesView.style.display = 'none';
     }
 
     function resolveVideoObj(videoPath) {
@@ -2141,7 +2142,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const videoObj = resolveVideoObj(bookmarkItem.dataset.path);
             if (videoObj) {
                 const seekTime = parseFloat(bookmarkItem.dataset.time);
-                notesView.style.display = 'none';
+                closeNotesView();
                 skipNextResume = true;
                 loadVideo(videoObj);
                 const onReady = () => {
@@ -2158,7 +2159,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (videoTitle) {
             const videoObj = resolveVideoObj(videoTitle.dataset.path);
             if (videoObj) {
-                notesView.style.display = 'none';
+                closeNotesView();
                 loadVideo(videoObj);
             }
             return;
@@ -2189,7 +2190,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (favItem.classList.contains('notes-fav-removed')) return;
             const videoObj = resolveVideoObj(favItem.dataset.path);
             if (videoObj) {
-                notesView.style.display = 'none';
+                closeNotesView();
                 loadVideo(videoObj);
             }
             return;
@@ -2373,6 +2374,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.target === helpModal) helpModal.style.display = 'none';
     });
 
+    // ── Notes Modal Close ─────────────────────────────
+    document.getElementById('close-notes-modal').addEventListener('click', closeNotesView);
+    notesView.addEventListener('click', (e) => {
+        if (e.target === notesView) closeNotesView();
+    });
+
     // ── Notes Manager Search ─────────────────────────────
     const notesSearchInput = document.getElementById('notes-search-input');
 
@@ -2439,6 +2446,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Close overlays first (priority order)
                 if (spotlightOverlay.style.display !== 'none') {
                     closeSpotlight();
+                    return;
+                }
+                if (notesView.style.display !== 'none') {
+                    closeNotesView();
                     return;
                 }
                 if (exportModal.style.display !== 'none') {

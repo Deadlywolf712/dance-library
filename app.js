@@ -252,7 +252,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 node.videos.forEach(video => {
                     const link = document.createElement('a');
                     link.className = `video-link ${state.watched.has(video.path) ? 'watched' : ''}`;
-                    link.style.setProperty('--depth', depth); link.style.paddingLeft = `calc(40px + (var(--depth) * 12px))`;
+                    link.style.setProperty('--depth', depth); link.style.paddingLeft = `calc(32px + (var(--depth) * 10px))`;
 
                     const titleSpan = document.createElement('span');
                     titleSpan.className = 'video-link-title';

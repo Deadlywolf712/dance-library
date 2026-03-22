@@ -491,13 +491,41 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
+        // Helper: create a collapsible section header with arrow toggle
+        function createCollapsibleSection(id, icon, label) {
+            const collapsed = safeLoad('collapsedSections', {})[id] || false;
+            const wrapper = document.createElement('div');
+            wrapper.className = 'home-section-wrapper' + (collapsed ? ' collapsed' : '');
+            wrapper.dataset.sectionId = id;
+
+            const header = document.createElement('div');
+            header.className = 'favorites-section-header collapsible-header';
+            header.innerHTML = `<span>${icon} ${label}</span><span class="section-toggle-arrow">${collapsed ? '&#9654;' : '&#9660;'}</span>`;
+            header.addEventListener('click', () => {
+                const isCollapsed = wrapper.classList.toggle('collapsed');
+                header.querySelector('.section-toggle-arrow').innerHTML = isCollapsed ? '&#9654;' : '&#9660;';
+                const saved = safeLoad('collapsedSections', {});
+                saved[id] = isCollapsed;
+                localStorage.setItem('collapsedSections', JSON.stringify(saved));
+            });
+
+            const content = document.createElement('div');
+            content.className = 'home-section-content';
+            content.style.display = collapsed ? 'none' : 'contents';
+
+            header.addEventListener('click', () => {
+                content.style.display = wrapper.classList.contains('collapsed') ? 'none' : 'contents';
+            });
+
+            wrapper.appendChild(header);
+            return { wrapper, content };
+        }
+
         // Render favorites section at root level (include soft-deleted for undo)
         const allTileFavs = new Set([...state.favorites, ...tilePendingUnfavs]);
         if (path.length === 0 && allTileFavs.size > 0) {
-            const favHeader = document.createElement('div');
-            favHeader.className = 'favorites-section-header';
-            favHeader.innerHTML = '<span class="fav-section-star">&#9733;</span> Favorites';
-            elements.courseGrid.appendChild(favHeader);
+            const { wrapper: favWrapper, content: favContent } = createCollapsibleSection('favorites', '&#9733;', 'Favorites');
+            elements.courseGrid.appendChild(favWrapper);
 
             let favIndex = 0;
             for (const favPath of allTileFavs) {
@@ -549,8 +577,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     updateNotesBadge();
                     renderHomeTiles(folderNode, path);
                 });
-                elements.courseGrid.appendChild(tile);
+                favContent.appendChild(tile);
             }
+            favWrapper.appendChild(favContent);
 
             const divider = document.createElement('div');
             divider.className = 'favorites-divider';
@@ -568,10 +597,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 .slice(0, 8);
 
             if (resumeEntries.length > 0) {
-                const cwHeader = document.createElement('div');
-                cwHeader.className = 'favorites-section-header';
-                cwHeader.innerHTML = '&#9654; Continue Watching';
-                elements.courseGrid.appendChild(cwHeader);
+                const { wrapper: cwWrapper, content: cwContent } = createCollapsibleSection('continue-watching', '&#9654;', 'Continue Watching');
+                elements.courseGrid.appendChild(cwWrapper);
 
                 for (const entry of resumeEntries) {
                     const info = videoData[entry.path];
@@ -596,9 +623,56 @@ document.addEventListener('DOMContentLoaded', () => {
                         <p style="font-size: 0.7rem; color: var(--text-muted); margin-top: 4px; opacity: 0.7;">${parts.join(' / ')}</p>
                     `;
                     tile.addEventListener('click', () => loadVideo(videoObj));
-                    elements.courseGrid.appendChild(tile);
+                    cwContent.appendChild(tile);
                     tileIndex++;
                 }
+                cwWrapper.appendChild(cwContent);
+
+                const divider = document.createElement('div');
+                divider.className = 'favorites-divider';
+                elements.courseGrid.appendChild(divider);
+            }
+        }
+
+        // Recent Notes section at root level
+        if (path.length === 0) {
+            const allBookmarks = safeLoad('videoBookmarks', {});
+            const notedVideos = [];
+            for (const [vPath, arr] of Object.entries(allBookmarks)) {
+                if (!Array.isArray(arr) || arr.length === 0 || !videoData[vPath]) continue;
+                const bks = typeof arr[0] === 'object' ? arr : arr.map(t => ({ t, n: '' }));
+                const withNotes = bks.filter(b => b.n);
+                if (withNotes.length > 0) {
+                    const parts = vPath.split('/');
+                    const filename = parts.pop();
+                    const title = filename.replace(/\.(mp4|mov)$/i, '');
+                    notedVideos.push({ path: vPath, title, folder: parts.join(' / '), noteCount: withNotes.length, bookmarkCount: bks.length });
+                }
+            }
+            if (notedVideos.length > 0) {
+                notedVideos.sort((a, b) => b.noteCount - a.noteCount);
+                const { wrapper: notesWrapper, content: notesContent } = createCollapsibleSection('recent-notes', '&#128221;', 'Recent Notes');
+                elements.courseGrid.appendChild(notesWrapper);
+
+                for (const nv of notedVideos.slice(0, 6)) {
+                    const tile = document.createElement('div');
+                    tile.className = 'course-tile';
+                    tile.style.animationDelay = `${tileIndex * 0.04}s`;
+                    tile.style.backgroundColor = 'var(--bg-base)';
+                    tile.innerHTML = `
+                        <div style="display: flex; align-items: flex-start; margin-bottom: 2px;">
+                            <span style="margin-right:10px; min-width:20px; margin-top: 2px; font-size: 1rem;">&#128221;</span>
+                            <h3 class="video-tile-title" style="margin-bottom: 0; color: var(--text-main); font-weight: normal; line-height: 1.4;">${nv.title}</h3>
+                        </div>
+                        <p style="font-size: 0.75rem; color: var(--text-muted); margin: 4px 0 0 0;">${nv.noteCount} note${nv.noteCount > 1 ? 's' : ''} · ${nv.bookmarkCount} bookmark${nv.bookmarkCount > 1 ? 's' : ''}</p>
+                        <p style="font-size: 0.7rem; color: var(--text-muted); margin-top: 4px; opacity: 0.7;">${nv.folder}</p>
+                    `;
+                    const info = videoData[nv.path];
+                    tile.addEventListener('click', () => loadVideo({ title: nv.title, path: nv.path, ...info }));
+                    notesContent.appendChild(tile);
+                    tileIndex++;
+                }
+                notesWrapper.appendChild(notesContent);
 
                 const divider = document.createElement('div');
                 divider.className = 'favorites-divider';
@@ -787,7 +861,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // AI summary (collapsible if course description exists)
         const aiContent = parseMarkdown(videoObj.summary);
         if (summaryHtml && videoObj.summary) {
-            summaryHtml += '<details class="ai-summary-details"><summary class="ai-summary-toggle">AI Analysis</summary><div class="ai-summary-content">' + aiContent + '</div></details>';
+            summaryHtml += '<details class="ai-summary-details" open><summary class="ai-summary-toggle">AI Analysis</summary><div class="ai-summary-content">' + aiContent + '</div></details>';
         } else {
             summaryHtml += aiContent;
         }

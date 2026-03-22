@@ -1025,6 +1025,10 @@ body.sidebar-closed #mobile-header {
   background: var(--bg-surface-hover);
 }
 
+@media (max-width: 768px) {
+  .home-header-actions { display: none !important; }
+}
+
 /* Home View Tiles */
 #home-view {
   padding: 40px;

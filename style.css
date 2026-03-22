@@ -2435,15 +2435,19 @@ video.mirrored {
   cursor: pointer;
   justify-content: space-between;
   user-select: none;
-  transition: opacity 0.15s;
+  transition: opacity 0.15s, font-size 0.15s, padding 0.15s;
 }
 .collapsible-header:hover {
   opacity: 0.8;
 }
+.home-section-wrapper.collapsed .collapsible-header {
+  font-size: 0.85rem;
+  padding: 0;
+  opacity: 0.6;
+}
 .section-toggle-arrow {
   font-size: 0.7rem;
   opacity: 0.5;
-  transition: transform 0.2s;
 }
 .home-section-content {
   display: contents;

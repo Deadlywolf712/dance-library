@@ -1029,6 +1029,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 hls.on(Hls.Events.MANIFEST_PARSED, function() {
                     video.play().catch(e => console.log("Autoplay prevented:", e));
                 });
+                hls.on(Hls.Events.ERROR, function(event, data) {
+                    if (data.fatal) {
+                        hls.destroy();
+                        hls = null;
+                        showToast('Stream error — try switching source', 5000);
+                    }
+                });
             } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
                 // Native Safari support
                 video.src = streamUrl;
@@ -1072,6 +1079,25 @@ document.addEventListener('DOMContentLoaded', () => {
             delete positions[state.currentVideo.path];
             localStorage.setItem('videoPositions', JSON.stringify(positions));
         }
+    });
+
+    // Reusable toast notification
+    function showToast(msg, duration = 3000) {
+        const toast = document.createElement('div');
+        toast.className = 'resume-toast';
+        toast.textContent = msg;
+        (elements.playerContainer || document.body).appendChild(toast);
+        setTimeout(() => toast.remove(), duration);
+    }
+
+    // Video error handler — show message instead of blank black box
+    elements.videoPlayer.addEventListener('error', () => {
+        const err = elements.videoPlayer.error;
+        if (!err) return;
+        const msg = err.code === 4 ? 'Video not found — try switching source'
+                  : err.code === 3 ? 'Video decode error — try a different browser'
+                  : 'Video failed to load';
+        showToast(msg, 5000);
     });
 
     // Parse Markdown & Add Clickable Timestamps
@@ -1213,9 +1239,14 @@ document.addEventListener('DOMContentLoaded', () => {
             updateVideoSource();
         });
 
-        // Search
+        // Search (debounced for 795+ videos)
+        let sidebarSearchTimeout;
         elements.searchInput.addEventListener('input', (e) => {
-            const query = e.target.value.toLowerCase();
+            clearTimeout(sidebarSearchTimeout);
+            sidebarSearchTimeout = setTimeout(() => { sidebarSearchFilter(e.target.value); }, 150);
+        });
+        function sidebarSearchFilter(val) {
+            const query = val.toLowerCase();
             document.querySelectorAll('.nav-group').forEach(group => {
                 let hasVisibleMatch = false;
                 
@@ -1248,7 +1279,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (headerBtn) headerBtn.classList.remove('active');
                 }
             });
-        });
+        }
 
         // Mobile Menu / Desktop Toggle
         const toggleSidebar = () => {
@@ -1970,6 +2001,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const bookmarks = getBookmarks(state.currentVideo.path);
         if (editingBookmarkIdx >= bookmarks.length) return;
         bookmarks[editingBookmarkIdx].n = bookmarkEditInput.value.trim();
+        if (bookmarkEditInput.value.trim()) bookmarks[editingBookmarkIdx].ts = Date.now();
         saveBookmarksToStorage(state.currentVideo.path, bookmarks);
         renderBookmarks();
     }
@@ -1999,7 +2031,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const bookmarks = getBookmarks(state.currentVideo.path);
         // Don't add duplicates (within 1s)
         if (bookmarks.some(bk => Math.abs(bk.t - time) < 1)) return;
-        bookmarks.push({ t: time, n: '' });
+        bookmarks.push({ t: time, n: '', ts: Date.now() });
         saveBookmarksToStorage(state.currentVideo.path, bookmarks);
         renderBookmarks();
         // Auto-open edit for the newly added bookmark
@@ -2084,13 +2116,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const notesContent = document.getElementById('notes-content');
     const notesSubtitle = document.getElementById('notes-subtitle');
 
+    // Track which button opened a modal so we can return focus on close
+    let lastModalTrigger = null;
+
     function showNotesView() {
-        // Pause video but DON'T hide any views — notes is now a modal overlay
+        lastModalTrigger = document.activeElement;
         if (elements.videoPlayer && !elements.videoPlayer.paused) elements.videoPlayer.pause();
-
-        // Reset soft-delete state for fresh session
         pendingUnfavorites = new Set();
-
         notesView.style.display = 'flex';
         renderNotesView();
         markNotesSeen();
@@ -2098,6 +2130,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function closeNotesView() {
         notesView.style.display = 'none';
+        if (lastModalTrigger) { lastModalTrigger.focus(); lastModalTrigger = null; }
     }
 
     function resolveVideoObj(videoPath) {
@@ -2192,8 +2225,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     const realIdx = bookmarks.findIndex(b => b.t === bk.t && b.n === bk.n);
                     const escapedNote = (bk.n || '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
                     const hasNote = !!bk.n;
+                    const noteAgo = bk.ts ? `<span class="notes-bookmark-ago">${timeAgo(bk.ts)}</span>` : '';
                     const noteHtml = hasNote
-                        ? `<span class="notes-bookmark-note">${escapedNote}</span>`
+                        ? `<span class="notes-bookmark-note">${escapedNote}</span>${noteAgo}`
                         : '<span class="notes-bookmark-notext">No note</span>';
                     itemsHtml += `<div class="notes-bookmark-item ${hasNote ? 'has-note' : ''}" data-path="${videoPath}" data-time="${bk.t}" data-bk-idx="${realIdx}">
                         <span class="notes-bookmark-time">${formatTime(bk.t)}</span>
@@ -2272,6 +2306,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 arr.sort((a, b) => a.t - b.t);
                 if (bkIdx < arr.length) {
                     arr[bkIdx].n = newNote;
+                    if (newNote) arr[bkIdx].ts = Date.now();
                     allBk[videoPath] = arr;
                     localStorage.setItem('videoBookmarks', JSON.stringify(allBk));
                 }
@@ -2426,8 +2461,10 @@ document.addEventListener('DOMContentLoaded', () => {
         spotlightActive = 0;
     }
 
+    let spotlightTimeout;
     spotlightInput.addEventListener('input', () => {
-        renderSpotlightResults(spotlightInput.value);
+        clearTimeout(spotlightTimeout);
+        spotlightTimeout = setTimeout(() => renderSpotlightResults(spotlightInput.value), 100);
     });
 
     spotlightInput.addEventListener('keydown', (e) => {
@@ -2594,6 +2631,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     function showHistoryModal() {
+        lastModalTrigger = document.activeElement;
         historySearchQuery = '';
         historySearchInput.value = '';
         renderHistoryList();
@@ -2602,6 +2640,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function closeHistoryModal() {
         historyModal.style.display = 'none';
+        if (lastModalTrigger) { lastModalTrigger.focus(); lastModalTrigger = null; }
     }
 
     document.getElementById('close-history-modal').addEventListener('click', closeHistoryModal);
@@ -2698,6 +2737,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     function showFavoritesModal() {
+        lastModalTrigger = document.activeElement;
         favSearchQuery = '';
         favSearchInput.value = '';
         favPendingUnfavs = new Set();
@@ -2707,6 +2747,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function closeFavoritesModal() {
         favoritesModal.style.display = 'none';
+        if (lastModalTrigger) { lastModalTrigger.focus(); lastModalTrigger = null; }
     }
 
     document.getElementById('close-favorites-modal').addEventListener('click', closeFavoritesModal);

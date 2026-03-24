@@ -2225,6 +2225,13 @@ video.mirrored {
   word-break: break-word;
   overflow-wrap: break-word;
 }
+.notes-bookmark-ago {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  opacity: 0.5;
+  margin-left: 6px;
+  white-space: nowrap;
+}
 
 .notes-bookmark-notext {
   font-size: 0.85rem;

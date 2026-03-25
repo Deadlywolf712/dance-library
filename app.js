@@ -2262,8 +2262,8 @@ document.addEventListener('DOMContentLoaded', () => {
         // Favorites are now in their own separate modal
 
         // ── Empty State ──
-        if (bookmarkPaths.length === 0 && allFavPaths.size === 0) {
-            notesContent.innerHTML = '<div class="notes-empty">No bookmarks, notes, or favorites yet. Start watching videos and use the bookmark and star buttons to build your collection.</div>';
+        if (bookmarkPaths.length === 0) {
+            notesContent.innerHTML = '<div class="notes-empty">No bookmarks or notes yet. Watch a video and use the bookmark button to start.</div>';
         }
         updateNotesBadge();
     }

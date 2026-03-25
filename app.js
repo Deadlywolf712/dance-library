@@ -2233,6 +2233,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <span class="notes-bookmark-time">${formatTime(bk.t)}</span>
                         <span class="notes-bookmark-text-wrap">${noteHtml}</span>
                         <span class="notes-item-actions">
+                            <span class="notes-item-copy" data-path="${videoPath}" data-time="${bk.t}" data-note="${escapedNote}" title="Copy to clipboard">&#128203;</span>
                             <span class="notes-item-edit" data-path="${videoPath}" data-bk-idx="${realIdx}" data-note="${escapedNote}" title="Edit note">&#9998;</span>
                             <span class="notes-item-delete" data-path="${videoPath}" data-bk-idx="${realIdx}" title="Delete bookmark">&times;</span>
                         </span>
@@ -2274,6 +2275,26 @@ document.addEventListener('DOMContentLoaded', () => {
             e.stopPropagation();
             notesFilterMode = filterBtn.dataset.filter;
             renderNotesView();
+            return;
+        }
+
+        // Copy icon → copy note to clipboard
+        const copyIcon = e.target.closest('.notes-item-copy');
+        if (copyIcon) {
+            e.stopPropagation();
+            const videoPath = copyIcon.dataset.path;
+            const time = formatTime(parseFloat(copyIcon.dataset.time));
+            const note = copyIcon.dataset.note || '';
+            const videoObj = resolveVideoObj(videoPath);
+            const videoTitle = videoObj ? videoObj.title : '';
+            const folder = videoObj ? videoObj.folderPath : '';
+            const text = note
+                ? `${time} — "${note}" — ${videoTitle} (${folder})`
+                : `${time} — ${videoTitle} (${folder})`;
+            navigator.clipboard.writeText(text).then(() => {
+                copyIcon.textContent = '✓';
+                setTimeout(() => { copyIcon.textContent = '📋'; }, 1500);
+            }).catch(() => {});
             return;
         }
 
@@ -2763,6 +2784,193 @@ document.addEventListener('DOMContentLoaded', () => {
     const homeFavsBtn = document.getElementById('home-favs-btn');
     if (homeFavsBtn) homeFavsBtn.addEventListener('click', showFavoritesModal);
 
+    // ── Web Share (mobile native share sheet) ──────────
+    const shareBtn = document.getElementById('share-btn');
+    if (navigator.share) {
+        shareBtn.style.display = '';
+        shareBtn.addEventListener('click', () => {
+            if (!state.currentVideo) return;
+            const title = state.currentVideo.title;
+            const text = `Check out "${title}" on Dance Masterclass Library`;
+            const url = window.location.href;
+            navigator.share({ title, text, url }).catch(() => {});
+        });
+    }
+
+    // ── Email & Print in Export ──────────────────────
+    const doEmailBtn = document.getElementById('do-email');
+    if (doEmailBtn) {
+        doEmailBtn.addEventListener('click', () => {
+            // Generate markdown content same as export
+            const expBtn = document.getElementById('do-export');
+            // Temporarily switch to markdown, build content, open mailto
+            const format = document.querySelector('input[name="export-format"]:checked');
+            const origVal = format ? format.value : 'markdown';
+            // Force markdown for email
+            const mdRadio = document.querySelector('input[name="export-format"][value="markdown"]');
+            if (mdRadio) mdRadio.checked = true;
+            // Trigger export logic to get content, but intercept
+            const subject = encodeURIComponent('My Dance Notes');
+            // Build simple email body from bookmarks
+            const allBk = safeLoad('videoBookmarks', {});
+            let body = 'My Dance Practice Notes\n\n';
+            for (const [path, arr] of Object.entries(allBk)) {
+                if (!Array.isArray(arr) || arr.length === 0) continue;
+                const bks = typeof arr[0] === 'object' ? arr : arr.map(t => ({ t, n: '' }));
+                const withNotes = bks.filter(b => b.n);
+                if (withNotes.length === 0) continue;
+                const parts = path.split('/');
+                const filename = parts.pop();
+                const title = filename.replace(/\.(mp4|mov)$/i, '');
+                body += title + ' (' + parts.join(' / ') + ')\n';
+                for (const bk of withNotes) {
+                    body += '  ' + formatTime(bk.t) + ' — ' + bk.n + '\n';
+                }
+                body += '\n';
+            }
+            window.location.href = 'mailto:?subject=' + subject + '&body=' + encodeURIComponent(body);
+            if (format) format.checked = true; // restore
+        });
+    }
+
+    const doPrintBtn = document.getElementById('do-print');
+    if (doPrintBtn) {
+        doPrintBtn.addEventListener('click', () => {
+            const allBk = safeLoad('videoBookmarks', {});
+            let html = '<html><head><title>Dance Practice Notes</title><style>body{font-family:sans-serif;max-width:700px;margin:40px auto;padding:0 20px;}h1{font-size:1.5rem;}h2{font-size:1.1rem;margin-top:24px;border-bottom:1px solid #ddd;padding-bottom:4px;}p{margin:4px 0;font-size:0.9rem;}.time{color:#c0392b;font-weight:600;}.note{color:#333;}</style></head><body>';
+            html += '<h1>Dance Practice Notes</h1>';
+            for (const [path, arr] of Object.entries(allBk)) {
+                if (!Array.isArray(arr) || arr.length === 0) continue;
+                const bks = typeof arr[0] === 'object' ? arr : arr.map(t => ({ t, n: '' }));
+                const parts = path.split('/');
+                const filename = parts.pop();
+                const title = filename.replace(/\.(mp4|mov)$/i, '');
+                html += '<h2>' + title + ' <small style="color:#999;">' + parts.join(' / ') + '</small></h2>';
+                for (const bk of bks) {
+                    const noteText = bk.n ? ' — ' + bk.n : '';
+                    html += '<p><span class="time">' + formatTime(bk.t) + '</span><span class="note">' + noteText + '</span></p>';
+                }
+            }
+            html += '</body></html>';
+            const win = window.open('', '_blank');
+            win.document.write(html);
+            win.document.close();
+            win.print();
+        });
+    }
+
+    // ── Practice Log ────────────────────────────────
+    const practiceModal = document.getElementById('practice-modal');
+    const practiceStreak = document.getElementById('practice-streak');
+    const practiceCalendar = document.getElementById('practice-calendar');
+    const practiceTodayBtn = document.getElementById('practice-today-btn');
+
+    function getPracticeDays() {
+        return safeLoad('practiceDays', []);
+    }
+
+    function todayStr() {
+        return new Date().toISOString().slice(0, 10);
+    }
+
+    function calculateStreak(days) {
+        if (days.length === 0) return 0;
+        const sorted = [...new Set(days)].sort().reverse();
+        const today = todayStr();
+        const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+        if (sorted[0] !== today && sorted[0] !== yesterday) return 0;
+        let streak = 1;
+        for (let i = 1; i < sorted.length; i++) {
+            const prev = new Date(sorted[i - 1]);
+            const curr = new Date(sorted[i]);
+            const diff = (prev - curr) / 86400000;
+            if (diff === 1) streak++;
+            else break;
+        }
+        return streak;
+    }
+
+    function renderPracticeLog() {
+        const days = getPracticeDays();
+        const streak = calculateStreak(days);
+        const today = todayStr();
+        const practicedToday = days.includes(today);
+
+        // Streak display
+        practiceStreak.innerHTML = `
+            <div style="font-size: 2.5rem; font-weight: 700; color: var(--accent);">${streak}</div>
+            <div style="font-size: 0.85rem; color: var(--text-muted);">day streak</div>
+            <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">${days.length} total practice days</div>
+        `;
+
+        // Today button state
+        if (practicedToday) {
+            practiceTodayBtn.textContent = '✓ Practiced today!';
+            practiceTodayBtn.style.opacity = '0.5';
+            practiceTodayBtn.disabled = true;
+        } else {
+            practiceTodayBtn.textContent = '✓ I practiced today';
+            practiceTodayBtn.style.opacity = '1';
+            practiceTodayBtn.disabled = false;
+        }
+
+        // Calendar heatmap (last 7 weeks)
+        const daysSet = new Set(days);
+        let calHtml = '<div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; max-width: 280px; margin: 0 auto;">';
+        calHtml += '<div style="font-size:0.6rem;color:var(--text-muted);text-align:center;">M</div><div style="font-size:0.6rem;color:var(--text-muted);text-align:center;">T</div><div style="font-size:0.6rem;color:var(--text-muted);text-align:center;">W</div><div style="font-size:0.6rem;color:var(--text-muted);text-align:center;">T</div><div style="font-size:0.6rem;color:var(--text-muted);text-align:center;">F</div><div style="font-size:0.6rem;color:var(--text-muted);text-align:center;">S</div><div style="font-size:0.6rem;color:var(--text-muted);text-align:center;">S</div>';
+
+        // Start from 7 weeks ago, aligned to Monday
+        const now = new Date();
+        const startDate = new Date(now);
+        startDate.setDate(startDate.getDate() - 48); // ~7 weeks
+        const dayOfWeek = startDate.getDay();
+        startDate.setDate(startDate.getDate() - ((dayOfWeek + 6) % 7)); // align to Monday
+
+        for (let i = 0; i < 49; i++) {
+            const d = new Date(startDate);
+            d.setDate(d.getDate() + i);
+            const ds = d.toISOString().slice(0, 10);
+            const isPracticed = daysSet.has(ds);
+            const isToday = ds === today;
+            const isFuture = d > now;
+            let bg = 'var(--bg-surface)';
+            if (isPracticed) bg = 'var(--accent)';
+            if (isFuture) bg = 'transparent';
+            calHtml += `<div style="width:100%;aspect-ratio:1;border-radius:3px;background:${bg};${isToday ? 'border:2px solid var(--text-muted);' : ''}${isFuture ? 'opacity:0.2;' : ''}" title="${ds}${isPracticed ? ' ✓' : ''}"></div>`;
+        }
+        calHtml += '</div>';
+        practiceCalendar.innerHTML = calHtml;
+    }
+
+    practiceTodayBtn.addEventListener('click', () => {
+        const days = getPracticeDays();
+        const today = todayStr();
+        if (!days.includes(today)) {
+            days.push(today);
+            localStorage.setItem('practiceDays', JSON.stringify(days));
+        }
+        renderPracticeLog();
+    });
+
+    function showPracticeModal() {
+        lastModalTrigger = document.activeElement;
+        renderPracticeLog();
+        practiceModal.style.display = 'flex';
+    }
+
+    function closePracticeModal() {
+        practiceModal.style.display = 'none';
+        if (lastModalTrigger) { lastModalTrigger.focus(); lastModalTrigger = null; }
+    }
+
+    document.getElementById('close-practice-modal').addEventListener('click', closePracticeModal);
+    practiceModal.addEventListener('click', (e) => {
+        if (e.target === practiceModal) closePracticeModal();
+    });
+
+    const homePracticeBtn = document.getElementById('home-practice-btn');
+    if (homePracticeBtn) homePracticeBtn.addEventListener('click', showPracticeModal);
+
     // ── Notes Modal Close ─────────────────────────────
     document.getElementById('close-notes-modal').addEventListener('click', closeNotesView);
     notesView.addEventListener('click', (e) => {
@@ -2847,6 +3055,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 if (favoritesModal.style.display !== 'none') {
                     closeFavoritesModal();
+                    return;
+                }
+                if (practiceModal.style.display !== 'none') {
+                    closePracticeModal();
                     return;
                 }
                 if (exportModal.style.display !== 'none') {

@@ -2859,117 +2859,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // ── Practice Log ────────────────────────────────
-    const practiceModal = document.getElementById('practice-modal');
-    const practiceStreak = document.getElementById('practice-streak');
-    const practiceCalendar = document.getElementById('practice-calendar');
-    const practiceTodayBtn = document.getElementById('practice-today-btn');
-
-    function getPracticeDays() {
-        return safeLoad('practiceDays', []);
-    }
-
-    function todayStr() {
-        return new Date().toISOString().slice(0, 10);
-    }
-
-    function calculateStreak(days) {
-        if (days.length === 0) return 0;
-        const sorted = [...new Set(days)].sort().reverse();
-        const today = todayStr();
-        const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-        if (sorted[0] !== today && sorted[0] !== yesterday) return 0;
-        let streak = 1;
-        for (let i = 1; i < sorted.length; i++) {
-            const prev = new Date(sorted[i - 1]);
-            const curr = new Date(sorted[i]);
-            const diff = (prev - curr) / 86400000;
-            if (diff === 1) streak++;
-            else break;
-        }
-        return streak;
-    }
-
-    function renderPracticeLog() {
-        const days = getPracticeDays();
-        const streak = calculateStreak(days);
-        const today = todayStr();
-        const practicedToday = days.includes(today);
-
-        // Streak display
-        practiceStreak.innerHTML = `
-            <div style="font-size: 2.5rem; font-weight: 700; color: var(--accent);">${streak}</div>
-            <div style="font-size: 0.85rem; color: var(--text-muted);">day streak</div>
-            <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">${days.length} total practice days</div>
-        `;
-
-        // Today button state
-        if (practicedToday) {
-            practiceTodayBtn.textContent = '✓ Practiced today!';
-            practiceTodayBtn.style.opacity = '0.5';
-            practiceTodayBtn.disabled = true;
-        } else {
-            practiceTodayBtn.textContent = '✓ I practiced today';
-            practiceTodayBtn.style.opacity = '1';
-            practiceTodayBtn.disabled = false;
-        }
-
-        // Calendar heatmap (last 7 weeks)
-        const daysSet = new Set(days);
-        let calHtml = '<div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; max-width: 280px; margin: 0 auto;">';
-        calHtml += '<div style="font-size:0.6rem;color:var(--text-muted);text-align:center;">M</div><div style="font-size:0.6rem;color:var(--text-muted);text-align:center;">T</div><div style="font-size:0.6rem;color:var(--text-muted);text-align:center;">W</div><div style="font-size:0.6rem;color:var(--text-muted);text-align:center;">T</div><div style="font-size:0.6rem;color:var(--text-muted);text-align:center;">F</div><div style="font-size:0.6rem;color:var(--text-muted);text-align:center;">S</div><div style="font-size:0.6rem;color:var(--text-muted);text-align:center;">S</div>';
-
-        // Start from 7 weeks ago, aligned to Monday
-        const now = new Date();
-        const startDate = new Date(now);
-        startDate.setDate(startDate.getDate() - 48); // ~7 weeks
-        const dayOfWeek = startDate.getDay();
-        startDate.setDate(startDate.getDate() - ((dayOfWeek + 6) % 7)); // align to Monday
-
-        for (let i = 0; i < 49; i++) {
-            const d = new Date(startDate);
-            d.setDate(d.getDate() + i);
-            const ds = d.toISOString().slice(0, 10);
-            const isPracticed = daysSet.has(ds);
-            const isToday = ds === today;
-            const isFuture = d > now;
-            let bg = 'var(--bg-surface)';
-            if (isPracticed) bg = 'var(--accent)';
-            if (isFuture) bg = 'transparent';
-            calHtml += `<div style="width:100%;aspect-ratio:1;border-radius:3px;background:${bg};${isToday ? 'border:2px solid var(--text-muted);' : ''}${isFuture ? 'opacity:0.2;' : ''}" title="${ds}${isPracticed ? ' ✓' : ''}"></div>`;
-        }
-        calHtml += '</div>';
-        practiceCalendar.innerHTML = calHtml;
-    }
-
-    practiceTodayBtn.addEventListener('click', () => {
-        const days = getPracticeDays();
-        const today = todayStr();
-        if (!days.includes(today)) {
-            days.push(today);
-            localStorage.setItem('practiceDays', JSON.stringify(days));
-        }
-        renderPracticeLog();
-    });
-
-    function showPracticeModal() {
-        lastModalTrigger = document.activeElement;
-        renderPracticeLog();
-        practiceModal.style.display = 'flex';
-    }
-
-    function closePracticeModal() {
-        practiceModal.style.display = 'none';
-        if (lastModalTrigger) { lastModalTrigger.focus(); lastModalTrigger = null; }
-    }
-
-    document.getElementById('close-practice-modal').addEventListener('click', closePracticeModal);
-    practiceModal.addEventListener('click', (e) => {
-        if (e.target === practiceModal) closePracticeModal();
-    });
-
-    const homePracticeBtn = document.getElementById('home-practice-btn');
-    if (homePracticeBtn) homePracticeBtn.addEventListener('click', showPracticeModal);
 
     // ── Notes Modal Close ─────────────────────────────
     document.getElementById('close-notes-modal').addEventListener('click', closeNotesView);
@@ -3057,11 +2946,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     closeFavoritesModal();
                     return;
                 }
-                if (practiceModal.style.display !== 'none') {
-                    closePracticeModal();
-                    return;
-                }
-                if (exportModal.style.display !== 'none') {
+if (exportModal.style.display !== 'none') {
                     exportModal.style.display = 'none';
                     return;
                 }

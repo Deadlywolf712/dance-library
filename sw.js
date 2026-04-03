@@ -1,5 +1,12 @@
-const CACHE_NAME = 'dance-library-v2';
-const SHELL_ASSETS = [
+// Self-healing service worker for Dance Masterclass Library
+// Strategy: network-first for app files, cache as offline fallback only
+// Cache busts automatically when this file changes (new deployment)
+
+const CACHE_VERSION = 3;
+const CACHE_NAME = `dance-library-v${CACHE_VERSION}`;
+
+// App shell files — cached on install for offline fallback
+const APP_FILES = [
   './',
   './index.html',
   './style.css',
@@ -8,19 +15,16 @@ const SHELL_ASSETS = [
   './salsa_course.js'
 ];
 
-// Assets that should use network-first (so updates are always picked up)
-const NETWORK_FIRST = ['app.js', 'data.js', 'salsa_course.js'];
-
-// Install — cache the app shell
+// ── Install: cache app shell, immediately take over ──
 self.addEventListener('install', (e) => {
   e.waitUntil(
     caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(SHELL_ASSETS))
+      .then(cache => cache.addAll(APP_FILES))
       .then(() => self.skipWaiting())
   );
 });
 
-// Activate — clean old caches
+// ── Activate: delete ALL old caches, claim all tabs ──
 self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys().then(keys =>
@@ -29,40 +33,66 @@ self.addEventListener('activate', (e) => {
   );
 });
 
-// Fetch handler
+// ── Fetch: network-first for everything, cache as fallback ──
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
+
   const url = new URL(e.request.url);
 
-  // Skip video streams — always go to network
+  // Skip video streams entirely — never cache, never intercept
   if (url.hostname.includes('b-cdn.net') || url.pathname.endsWith('.m3u8') || url.pathname.endsWith('.ts')) return;
 
-  // Network-first for JS files that change often
-  if (NETWORK_FIRST.some(f => url.pathname.endsWith(f))) {
+  // Network-first for ALL app files (HTML, CSS, JS)
+  // This ensures updates are always picked up immediately
+  // Cache is ONLY used when offline
+  const isAppFile = url.origin === location.origin;
+
+  if (isAppFile) {
     e.respondWith(
       fetch(e.request).then(response => {
+        // Got fresh response — update cache
         if (response.ok) {
           const clone = response.clone();
           caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone));
         }
         return response;
-      }).catch(() => caches.match(e.request))
+      }).catch(() => {
+        // Offline — serve from cache
+        return caches.match(e.request).then(cached => {
+          return cached || caches.match('./index.html');
+        });
+      })
     );
     return;
   }
 
-  // Cache-first for everything else
+  // External resources (fonts, hls.js CDN) — cache on first success, serve from cache after
   e.respondWith(
     caches.match(e.request).then(cached => {
-      if (cached) return cached;
-      return fetch(e.request).then(response => {
-        // Cache fonts and CDN assets on first load
-        if (response.ok && (url.hostname.includes('fonts.googleapis.com') || url.hostname.includes('fonts.gstatic.com') || url.hostname.includes('cdn.jsdelivr.net'))) {
+      // Return cached immediately but also refresh in background
+      const fetchPromise = fetch(e.request).then(response => {
+        if (response.ok) {
           const clone = response.clone();
           caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone));
         }
         return response;
-      });
-    }).catch(() => caches.match('./index.html'))
+      }).catch(() => null);
+
+      // If cached, return it immediately (stale-while-revalidate)
+      // If not cached, wait for network
+      return cached || fetchPromise;
+    })
   );
+});
+
+// ── Message handler: allow page to force cache clear ──
+self.addEventListener('message', (e) => {
+  if (e.data === 'CLEAR_CACHE') {
+    caches.keys().then(keys =>
+      Promise.all(keys.map(k => caches.delete(k)))
+    ).then(() => {
+      // Re-cache fresh app shell
+      caches.open(CACHE_NAME).then(cache => cache.addAll(APP_FILES));
+    });
+  }
 });

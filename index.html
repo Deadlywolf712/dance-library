@@ -15,11 +15,18 @@
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400;1,600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
   <link rel="manifest" href="manifest.json">
+  <!-- Loading spinner (shown while data.js loads) -->
+  <style>
+    .app-loader { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: #fdf6e3; z-index: 99999; transition: opacity 0.3s; }
+    .app-loader-spin { width: 36px; height: 36px; border: 3px solid rgba(0,0,0,0.1); border-top-color: #cb4b16; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
   <!-- Load Data before JS logic -->
   <script src="data.js"></script>
   <script src="salsa_course.js"></script>
 </head>
 <body>
+  <div class="app-loader" id="app-loader"><div class="app-loader-spin"></div></div>
   <div class="noise-overlay"></div>
 
   <!-- Sidebar Navigation -->

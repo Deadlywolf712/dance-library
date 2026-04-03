@@ -14,6 +14,24 @@ document.addEventListener('DOMContentLoaded', () => {
         catch(e) { console.warn('Corrupt localStorage key:', key, e); localStorage.removeItem(key); return fallback; }
     }
 
+    // Safe localStorage write (handles quota exceeded, private mode, disabled storage)
+    let storageWarningShown = false;
+    function safeStore(key, value) {
+        try { safeStore(key, typeof value === 'string' ? value : JSON.stringify(value)); }
+        catch(e) {
+            if (!storageWarningShown) {
+                storageWarningShown = true;
+                console.warn('Storage write failed:', key, e);
+                // Show non-blocking toast if storage is full
+                const toast = document.createElement('div');
+                toast.className = 'resume-toast';
+                toast.textContent = 'Storage full — some data may not save. Clear old data in Settings.';
+                document.body.appendChild(toast);
+                setTimeout(() => toast.remove(), 4000);
+            }
+        }
+    }
+
     // State
     const state = {
         tree: {},
@@ -105,6 +123,10 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.sourceToggle.checked = isHosted || checkIsMobile() ? true : state.useBunny;
         elements.themeSelect.value = state.theme;
         updateNotesBadge();
+
+        // Hide loading spinner
+        const loader = document.getElementById('app-loader');
+        if (loader) { loader.style.opacity = '0'; setTimeout(() => loader.remove(), 300); }
     }
 
     // Parse Data into Hierarchical Tree
@@ -277,7 +299,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             starBtn.classList.add('active');
                             starBtn.title = 'Unfavorite';
                         }
-                        localStorage.setItem('favoriteVideos', JSON.stringify([...state.favorites]));
+                        safeStore('favoriteVideos', JSON.stringify([...state.favorites]));
                         updateNotesBadge();
                         // Update fav button if this is the current video
                         if (state.currentVideo && state.currentVideo.path === video.path) updateFavBtn();
@@ -398,7 +420,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (Array.isArray(arr)) total += arr.length;
         }
         total += state.favorites.size;
-        localStorage.setItem('notesBadgeSeen', total.toString());
+        safeStore('notesBadgeSeen', total.toString());
         updateNotesBadge();
     }
 
@@ -506,7 +528,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 header.querySelector('.section-toggle-arrow').innerHTML = isCollapsed ? '&#9654;' : '&#9660;';
                 const saved = safeLoad('collapsedSections', {});
                 saved[id] = isCollapsed;
-                localStorage.setItem('collapsedSections', JSON.stringify(saved));
+                safeStore('collapsedSections', JSON.stringify(saved));
             });
 
             const content = document.createElement('div');
@@ -573,7 +595,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         tilePendingUnfavs.add(favPath);
                         state.favorites.delete(favPath);
                     }
-                    localStorage.setItem('favoriteVideos', JSON.stringify([...state.favorites]));
+                    safeStore('favoriteVideos', JSON.stringify([...state.favorites]));
                     updateNotesBadge();
                     renderHomeTiles(folderNode, path);
                 });
@@ -807,7 +829,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     } else {
                         state.favorites.add(video.path);
                     }
-                    localStorage.setItem('favoriteVideos', JSON.stringify([...state.favorites]));
+                    safeStore('favoriteVideos', JSON.stringify([...state.favorites]));
                     updateNotesBadge();
                     renderHomeTiles(folderNode, path);
                 });
@@ -986,12 +1008,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Mark as watched
         state.watched.add(videoObj.path);
-        localStorage.setItem('watchedVideos', JSON.stringify([...state.watched]));
+        safeStore('watchedVideos', JSON.stringify([...state.watched]));
         if (activeLink) activeLink.classList.add('watched');
 
         // Track last watched timestamp
         state.lastWatched[videoObj.path] = Date.now();
-        localStorage.setItem('videoLastWatched', JSON.stringify(state.lastWatched));
+        safeStore('videoLastWatched', JSON.stringify(state.lastWatched));
 
         // Scroll to top
         elements.videoView.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -1077,7 +1099,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (state.currentVideo) {
             const positions = safeLoad('videoPositions', {});
             delete positions[state.currentVideo.path];
-            localStorage.setItem('videoPositions', JSON.stringify(positions));
+            safeStore('videoPositions', JSON.stringify(positions));
         }
     });
 
@@ -1235,7 +1257,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Source Toggle
         elements.sourceToggle.addEventListener('change', (e) => {
             state.useBunny = e.target.checked;
-            localStorage.setItem('useBunny', state.useBunny);
+            safeStore('useBunny', state.useBunny);
             updateVideoSource();
         });
 
@@ -1351,14 +1373,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 alert("Warning: Bunny Pull Zone usually ends in .b-cdn.net (e.g. vz-123.b-cdn.net)");
             }
             state.bunnyPullZone = inputVal;
-            localStorage.setItem('bunny_pull_zone', state.bunnyPullZone);
+            safeStore('bunny_pull_zone', state.bunnyPullZone);
             elements.settingsModal.style.display = 'none';
             
             // If they just added it, turn Bunny on
             if(state.bunnyPullZone) {
                 state.useBunny = true;
                 elements.sourceToggle.checked = true;
-                localStorage.setItem('useBunny', true);
+                safeStore('useBunny', true);
                 updateVideoSource();
             }
         });
@@ -1434,7 +1456,7 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 favThemes.add(state.theme);
             }
-            localStorage.setItem('favoriteThemes', JSON.stringify([...favThemes]));
+            safeStore('favoriteThemes', JSON.stringify([...favThemes]));
             updateThemeFavBtn();
             renderFavThemes();
         });
@@ -1445,7 +1467,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (removeBtn) {
                 e.stopPropagation();
                 favThemes.delete(removeBtn.dataset.theme);
-                localStorage.setItem('favoriteThemes', JSON.stringify([...favThemes]));
+                safeStore('favoriteThemes', JSON.stringify([...favThemes]));
                 updateThemeFavBtn();
                 renderFavThemes();
                 return;
@@ -1523,7 +1545,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function applyTheme(themeName) {
         document.documentElement.setAttribute('data-theme', themeName);
         document.body.setAttribute('data-theme', themeName);
-        localStorage.setItem('theme', themeName);
+        safeStore('theme', themeName);
     }
 
     // ── Export / Import ───────────────────────────────────
@@ -1765,7 +1787,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (Array.isArray(data.watchedVideos)) {
                     const existing = new Set(safeLoad('watchedVideos', []));
                     data.watchedVideos.forEach(v => existing.add(v));
-                    localStorage.setItem('watchedVideos', JSON.stringify([...existing]));
+                    safeStore('watchedVideos', JSON.stringify([...existing]));
                     existing.forEach(v => state.watched.add(v));
                 }
 
@@ -1782,13 +1804,13 @@ document.addEventListener('DOMContentLoaded', () => {
                             }
                         }
                     }
-                    localStorage.setItem('videoBookmarks', JSON.stringify(existing));
+                    safeStore('videoBookmarks', JSON.stringify(existing));
                 }
 
                 if (Array.isArray(data.favoriteVideos)) {
                     const existing = new Set(safeLoad('favoriteVideos', []));
                     data.favoriteVideos.forEach(v => existing.add(v));
-                    localStorage.setItem('favoriteVideos', JSON.stringify([...existing]));
+                    safeStore('favoriteVideos', JSON.stringify([...existing]));
                     existing.forEach(v => state.favorites.add(v));
                 }
 
@@ -1797,14 +1819,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     for (const [path, pos] of Object.entries(data.videoPositions)) {
                         if (!existing[path] || pos > existing[path]) existing[path] = pos;
                     }
-                    localStorage.setItem('videoPositions', JSON.stringify(existing));
+                    safeStore('videoPositions', JSON.stringify(existing));
                 }
 
                 if (data.videoLastWatched && typeof data.videoLastWatched === 'object') {
                     for (const [path, ts] of Object.entries(data.videoLastWatched)) {
                         if (!state.lastWatched[path] || ts > state.lastWatched[path]) state.lastWatched[path] = ts;
                     }
-                    localStorage.setItem('videoLastWatched', JSON.stringify(state.lastWatched));
+                    safeStore('videoLastWatched', JSON.stringify(state.lastWatched));
                 }
 
                 renderNavigation();
@@ -1892,7 +1914,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!isNaN(d) && t > 5 && t < d - 5) {
                 const positions = safeLoad('videoPositions', {});
                 positions[state.currentVideo.path] = Math.floor(t);
-                localStorage.setItem('videoPositions', JSON.stringify(positions));
+                safeStore('videoPositions', JSON.stringify(positions));
             }
         }
     });
@@ -1940,7 +1962,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (arr.length > 0 && typeof arr[0] === 'number') {
             arr = arr.map(t => ({ t: t, n: '' }));
             all[videoPath] = arr;
-            localStorage.setItem('videoBookmarks', JSON.stringify(all));
+            safeStore('videoBookmarks', JSON.stringify(all));
         }
         return arr.sort((a, b) => a.t - b.t);
     }
@@ -1952,7 +1974,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             all[videoPath] = bookmarks;
         }
-        localStorage.setItem('videoBookmarks', JSON.stringify(all));
+        safeStore('videoBookmarks', JSON.stringify(all));
     }
 
     function renderBookmarks() {
@@ -2106,7 +2128,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             state.favorites.add(path);
         }
-        localStorage.setItem('favoriteVideos', JSON.stringify([...state.favorites]));
+        safeStore('favoriteVideos', JSON.stringify([...state.favorites]));
         updateFavBtn();
         updateNotesBadge();
     });
@@ -2329,7 +2351,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     arr[bkIdx].n = newNote;
                     if (newNote) arr[bkIdx].ts = Date.now();
                     allBk[videoPath] = arr;
-                    localStorage.setItem('videoBookmarks', JSON.stringify(allBk));
+                    safeStore('videoBookmarks', JSON.stringify(allBk));
                 }
                 renderNotesView();
                 if (elements.homeView.style.display !== 'none') renderHomeTiles(null, []);
@@ -2361,7 +2383,7 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 allBk[videoPath] = arr;
             }
-            localStorage.setItem('videoBookmarks', JSON.stringify(allBk));
+            safeStore('videoBookmarks', JSON.stringify(allBk));
             renderNotesView();
             updateNotesBadge();
             if (elements.homeView.style.display !== 'none') renderHomeTiles(null, []);
@@ -2734,7 +2756,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 favPendingUnfavs.add(path);
                 state.favorites.delete(path);
             }
-            localStorage.setItem('favoriteVideos', JSON.stringify([...state.favorites]));
+            safeStore('favoriteVideos', JSON.stringify([...state.favorites]));
             updateNotesBadge();
             if (state.currentVideo && state.currentVideo.path === path) updateFavBtn();
             renderFavoritesList();

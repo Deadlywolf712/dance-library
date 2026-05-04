@@ -17,7 +17,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // Safe localStorage write (handles quota exceeded, private mode, disabled storage)
     let storageWarningShown = false;
     function safeStore(key, value) {
-        try { safeStore(key, typeof value === 'string' ? value : JSON.stringify(value)); }
+        try {
+            const serialized = typeof value === 'string' ? value : JSON.stringify(value);
+            localStorage.setItem(key, serialized);
+        }
         catch(e) {
             if (!storageWarningShown) {
                 storageWarningShown = true;
@@ -30,6 +33,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 setTimeout(() => toast.remove(), 4000);
             }
         }
+    }
+
+    const naturalCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+
+    function compareNatural(a, b) {
+        return naturalCollator.compare(String(a || ''), String(b || ''));
+    }
+
+    function compareVideos(a, b) {
+        return compareNatural(a.title, b.title) || compareNatural(a.path, b.path);
     }
 
     // State
@@ -77,6 +90,8 @@ document.addEventListener('DOMContentLoaded', () => {
         videoBreadcrumb: document.getElementById('video-breadcrumb'),
         prevBtn: document.getElementById('prev-video-btn'),
         nextBtn: document.getElementById('next-video-btn'),
+        prevOverlayBtn: document.getElementById('prev-video-overlay'),
+        nextOverlayBtn: document.getElementById('next-video-overlay'),
         abLoopBtn: document.getElementById('ab-loop-btn'),
         mirrorBtn: document.getElementById('mirror-btn'),
         skipBackBtn: document.getElementById('skip-back-btn'),
@@ -185,7 +200,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (iA !== -1 && iB !== -1) return iA - iB;
             if (iA !== -1) return -1;
             if (iB !== -1) return 1;
-            return a.localeCompare(b);
+            return compareNatural(a, b);
         });
     }
 
@@ -270,7 +285,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Render videos in this folder
             if (node.videos.length > 0) {
-                node.videos.sort((a, b) => a.title.localeCompare(b.title));
+                node.videos.sort(compareVideos);
                 node.videos.forEach(video => {
                     const link = document.createElement('a');
                     link.className = `video-link ${state.watched.has(video.path) ? 'watched' : ''}`;
@@ -792,7 +807,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // Render videos as tiles (if any in this exact folder)
         if (folderNode.videos) {
-            const videos = [...folderNode.videos].sort((a,b) => a.title.localeCompare(b.title));
+            const videos = [...folderNode.videos].sort(compareVideos);
             for (const video of videos) {
                 tileIndex++;
                 const tile = document.createElement('div');
@@ -867,7 +882,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         if (folderNode && folderNode.videos) {
             // Ensure sorted
-            const sortedVideos = [...folderNode.videos].sort((a,b) => a.title.localeCompare(b.title));
+            const sortedVideos = [...folderNode.videos].sort(compareVideos);
             const currentIndex = sortedVideos.findIndex(v => v.path === videoObj.path);
             
             state.playlist = sortedVideos;
@@ -875,9 +890,13 @@ document.addEventListener('DOMContentLoaded', () => {
             
             elements.prevBtn.disabled = currentIndex <= 0;
             elements.nextBtn.disabled = currentIndex === -1 || currentIndex >= sortedVideos.length - 1;
+            if (elements.prevOverlayBtn) elements.prevOverlayBtn.disabled = elements.prevBtn.disabled;
+            if (elements.nextOverlayBtn) elements.nextOverlayBtn.disabled = elements.nextBtn.disabled;
         } else {
             elements.prevBtn.disabled = true;
             elements.nextBtn.disabled = true;
+            if (elements.prevOverlayBtn) elements.prevOverlayBtn.disabled = true;
+            if (elements.nextOverlayBtn) elements.nextOverlayBtn.disabled = true;
         }
         elements.homeView.style.display = 'none';
         closeNotesView();
@@ -959,12 +978,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 let pathData;
                 try { pathData = JSON.parse(e.currentTarget.dataset.path); } catch(err) { return; }
                 
-                // Stop the video
-                if (elements.videoPlayer && !elements.videoPlayer.paused) elements.videoPlayer.pause();
-                if (hls) {
-                    hls.destroy();
-                    hls = null;
-                }
+                pauseVideoPlayback({ destroyStream: true });
                 
                 // Switch Views
                 elements.videoView.style.display = 'none';
@@ -1037,6 +1051,14 @@ document.addEventListener('DOMContentLoaded', () => {
             hls.destroy();
             hls = null;
         }
+        video.pause();
+        video.removeAttribute('src');
+        video.load();
+
+        function playLocalFile() {
+            video.src = encodeURI(state.currentVideo.path);
+            video.play().catch(e => console.log("Autoplay prevented:", e));
+        }
         
         const useCDN = state.useBunny || checkIsMobile();
         if (useCDN && state.currentVideo.bunny_id && state.bunnyPullZone) {
@@ -1055,7 +1077,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (data.fatal) {
                         hls.destroy();
                         hls = null;
-                        showToast('Stream error — try switching source', 5000);
+                        showToast('Stream error — using local file path', 5000);
+                        playLocalFile();
                     }
                 });
             } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
@@ -1064,11 +1087,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 video.addEventListener('loadedmetadata', function() {
                     video.play().catch(e => console.log("Autoplay prevented:", e));
                 }, { once: true });
+            } else {
+                showToast('Stream playback is unavailable here — using local file path', 5000);
+                playLocalFile();
             }
         } else {
-            // Local File Playback
-            video.src = encodeURI(state.currentVideo.path);
-            video.play().catch(e => console.log("Autoplay prevented:", e));
+            playLocalFile();
         }
     }
 
@@ -1093,6 +1117,42 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Bind once — fires each time a new source loads metadata
     elements.videoPlayer.addEventListener('loadedmetadata', tryResumePosition);
+
+    function saveCurrentPosition() {
+        if (!state.currentVideo || !elements.videoPlayer) return;
+        const v = elements.videoPlayer;
+        const t = Number(v.currentTime || 0);
+        const d = Number(v.duration || 0);
+        if (!Number.isFinite(t) || t < 1) return;
+
+        if (!Number.isFinite(d) || d === 0 || t < d - 5) {
+            const positions = safeLoad('videoPositions', {});
+            positions[state.currentVideo.path] = Math.floor(t);
+            safeStore('videoPositions', JSON.stringify(positions));
+        }
+
+        state.lastWatched[state.currentVideo.path] = Date.now();
+        safeStore('videoLastWatched', JSON.stringify(state.lastWatched));
+    }
+
+    function pauseVideoPlayback(options = {}) {
+        saveCurrentPosition();
+        if (elements.videoPlayer && !elements.videoPlayer.paused) elements.videoPlayer.pause();
+        if (options.destroyStream && hls) {
+            hls.destroy();
+            hls = null;
+        }
+    }
+
+    function clearWatchHistoryData() {
+        state.watched.clear();
+        state.lastWatched = {};
+        localStorage.removeItem('watchedVideos');
+        localStorage.removeItem('videoLastWatched');
+        localStorage.removeItem('videoPositions');
+        renderNavigation();
+        if (elements.homeView && elements.homeView.style.display !== 'none') renderHomeTiles(null, []);
+    }
 
     // Clear saved position when video finishes
     elements.videoPlayer.addEventListener('ended', function() {
@@ -1165,16 +1225,26 @@ document.addEventListener('DOMContentLoaded', () => {
                 loadVideo(state.playlist[state.playlistIndex + 1]);
             }
         });
+        if (elements.prevOverlayBtn) {
+            elements.prevOverlayBtn.addEventListener('click', () => {
+                if (state.playlist && state.playlistIndex > 0) {
+                    loadVideo(state.playlist[state.playlistIndex - 1]);
+                }
+            });
+        }
+        if (elements.nextOverlayBtn) {
+            elements.nextOverlayBtn.addEventListener('click', () => {
+                if (state.playlist && state.playlistIndex < state.playlist.length - 1) {
+                    loadVideo(state.playlist[state.playlistIndex + 1]);
+                }
+            });
+        }
         // Go Home helper
         function goHome() {
             elements.videoView.style.display = 'none';
             closeNotesView();
             elements.homeView.style.display = 'block';
-            if (elements.videoPlayer && !elements.videoPlayer.paused) elements.videoPlayer.pause();
-            if (hls) {
-                hls.destroy();
-                hls = null;
-            }
+            pauseVideoPlayback({ destroyStream: true });
             document.querySelectorAll('.video-link').forEach(l => l.classList.remove('active'));
             state.currentVideo = null;
             renderHomeTiles(null, []);
@@ -1347,6 +1417,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // Settings Modal
         function openSettings() {
+            pauseVideoPlayback();
             elements.bunnyLibInput.value = state.bunnyPullZone;
             elements.themeSelect.value = state.theme;
             elements.settingsModal.style.display = 'flex';
@@ -1495,11 +1566,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         document.getElementById('reset-watched').addEventListener('click', () => {
             confirmAndReset('Clear all watch history? This cannot be undone.', () => {
-                state.watched.clear();
-                state.lastWatched = {};
-                localStorage.removeItem('watchedVideos');
-                localStorage.removeItem('videoLastWatched');
-                renderNavigation();
+                clearWatchHistoryData();
             });
         });
 
@@ -1570,6 +1637,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.querySelectorAll('.open-export-modal-btn').forEach(btn => {
         btn.addEventListener('click', () => {
+            pauseVideoPlayback();
             const onVideo = state.currentVideo && elements.videoView.style.display !== 'none';
             exportContext = onVideo ? 'video' : 'library';
 
@@ -2143,7 +2211,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function showNotesView() {
         lastModalTrigger = document.activeElement;
-        if (elements.videoPlayer && !elements.videoPlayer.paused) elements.videoPlayer.pause();
+        pauseVideoPlayback();
         pendingUnfavorites = new Set();
         notesView.style.display = 'flex';
         renderNotesView();
@@ -2452,6 +2520,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let spotlightActive = -1;
 
     function openSpotlight() {
+        pauseVideoPlayback();
         spotlightOverlay.style.display = 'flex';
         spotlightInput.value = '';
         spotlightResults.innerHTML = '';
@@ -2463,6 +2532,7 @@ document.addEventListener('DOMContentLoaded', () => {
         spotlightOverlay.style.display = 'none';
         spotlightInput.value = '';
         spotlightResults.innerHTML = '';
+        spotlightInput.blur();
     }
 
     function renderSpotlightResults(query) {
@@ -2543,7 +2613,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const shortcutsOverlay = document.getElementById('shortcuts-overlay');
 
     function toggleShortcuts() {
-        shortcutsOverlay.style.display = shortcutsOverlay.style.display === 'none' ? 'flex' : 'none';
+        const opening = shortcutsOverlay.style.display === 'none';
+        if (opening) pauseVideoPlayback();
+        shortcutsOverlay.style.display = opening ? 'flex' : 'none';
     }
 
     document.getElementById('close-shortcuts').addEventListener('click', () => {
@@ -2558,6 +2630,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const helpModal = document.getElementById('help-modal');
 
     const openHelpModal = () => {
+        pauseVideoPlayback();
         helpModal.style.display = 'flex';
         if (window.innerWidth <= 768) {
             elements.sidebar.classList.remove('open');
@@ -2571,6 +2644,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (homeNotesBtn) homeNotesBtn.addEventListener('click', () => showNotesView());
     const homeSettingsBtn = document.getElementById('home-settings-btn');
     if (homeSettingsBtn) homeSettingsBtn.addEventListener('click', () => {
+        pauseVideoPlayback();
         elements.bunnyLibInput.value = state.bunnyPullZone;
         elements.themeSelect.value = state.theme;
         elements.settingsModal.style.display = 'flex';
@@ -2585,6 +2659,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (mobileHelpBtn) mobileHelpBtn.addEventListener('click', openHelpModal);
     const mobileSettingsBtn = document.getElementById('mobile-settings-btn');
     if (mobileSettingsBtn) mobileSettingsBtn.addEventListener('click', () => {
+        pauseVideoPlayback();
         elements.bunnyLibInput.value = state.bunnyPullZone;
         elements.themeSelect.value = state.theme;
         elements.settingsModal.style.display = 'flex';
@@ -2675,6 +2750,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function showHistoryModal() {
         lastModalTrigger = document.activeElement;
+        pauseVideoPlayback();
         historySearchQuery = '';
         historySearchInput.value = '';
         renderHistoryList();
@@ -2687,6 +2763,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     document.getElementById('close-history-modal').addEventListener('click', closeHistoryModal);
+    document.getElementById('clear-history-modal').addEventListener('click', () => {
+        if (!confirm('Clear watch history and resume positions? This cannot be undone.')) return;
+        clearWatchHistoryData();
+        historySearchQuery = '';
+        historySearchInput.value = '';
+        renderHistoryList();
+    });
     historyModal.addEventListener('click', (e) => {
         if (e.target === historyModal) closeHistoryModal();
     });
@@ -2781,6 +2864,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function showFavoritesModal() {
         lastModalTrigger = document.activeElement;
+        pauseVideoPlayback();
         favSearchQuery = '';
         favSearchInput.value = '';
         favPendingUnfavs = new Set();
@@ -2903,7 +2987,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
 
         // Global shortcuts
-        if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
             e.preventDefault();
             if (spotlightOverlay.style.display !== 'none') { closeSpotlight(); } else { openSpotlight(); }
             return;

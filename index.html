@@ -142,7 +142,13 @@
     <div id="video-view">
       <div id="video-sticky-wrapper">
         <div class="player-container">
+          <button class="video-sequence-arrow video-sequence-prev" id="prev-video-overlay" type="button" aria-label="Previous video" disabled>
+            <svg viewBox="0 0 24 24" width="28" height="28" stroke="currentColor" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+          </button>
           <video id="video-player" controls preload="metadata"></video>
+          <button class="video-sequence-arrow video-sequence-next" id="next-video-overlay" type="button" aria-label="Next video" disabled>
+            <svg viewBox="0 0 24 24" width="28" height="28" stroke="currentColor" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+          </button>
           <div class="player-overlay-controls">
             <button id="theater-btn" class="overlay-btn" title="Theater mode (T)">
               <svg width="16" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
@@ -290,7 +296,10 @@
       <div class="notes-modal-header">
         <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
           <h2 style="margin: 0; font-family: var(--font-display); font-weight: 600; color: var(--text-main); font-size: 1.3rem;">Watch History</h2>
-          <button class="shortcuts-close" id="close-history-modal" title="Close">&times;</button>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <button class="bookmark-add-btn" id="clear-history-modal" type="button">Clear</button>
+            <button class="shortcuts-close" id="close-history-modal" title="Close">&times;</button>
+          </div>
         </div>
       </div>
       <div class="notes-search-wrap">

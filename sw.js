@@ -2,7 +2,7 @@
 // Strategy: network-first for app files, cache as offline fallback only
 // Cache busts automatically when this file changes (new deployment)
 
-const CACHE_VERSION = 3;
+const CACHE_VERSION = 4;
 const CACHE_NAME = `dance-library-v${CACHE_VERSION}`;
 
 // App shell files — cached on install for offline fallback
@@ -40,7 +40,7 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
 
   // Skip video streams entirely — never cache, never intercept
-  if (url.hostname.includes('b-cdn.net') || url.pathname.endsWith('.m3u8') || url.pathname.endsWith('.ts')) return;
+  if (url.hostname.includes('b-cdn.net') || url.pathname.endsWith('.m3u8') || url.pathname.endsWith('.ts') || url.pathname.endsWith('.mp4') || url.pathname.endsWith('.mov')) return;
 
   // Network-first for ALL app files (HTML, CSS, JS)
   // This ensures updates are always picked up immediately

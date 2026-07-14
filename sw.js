@@ -1,98 +1,108 @@
-// Self-healing service worker for Dance Masterclass Library
-// Strategy: network-first for app files, cache as offline fallback only
-// Cache busts automatically when this file changes (new deployment)
+// Resilient offline shell for Dance Library.
+// App files use network-first; third-party assets use stale-while-revalidate.
 
-const CACHE_VERSION = 4;
-const CACHE_NAME = `dance-library-v${CACHE_VERSION}`;
+const CACHE_VERSION = 6;
+const CACHE_PREFIX = 'dance-library-v';
+const CACHE_NAME = `${CACHE_PREFIX}${CACHE_VERSION}`;
 
-// App shell files — cached on install for offline fallback
 const APP_FILES = [
   './',
   './index.html',
   './style.css',
   './app.js',
   './data.js',
-  './salsa_course.js'
+  './salsa_course.js',
+  './manifest.json',
+  './icon.svg',
+  './icon-192.png',
+  './icon-512.png'
 ];
 
-// ── Install: cache app shell, immediately take over ──
-self.addEventListener('install', (e) => {
-  e.waitUntil(
+self.addEventListener('install', event => {
+  event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => cache.addAll(APP_FILES))
       .then(() => self.skipWaiting())
   );
 });
 
-// ── Activate: delete ALL old caches, claim all tabs ──
-self.addEventListener('activate', (e) => {
-  e.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
-    ).then(() => self.clients.claim())
+self.addEventListener('activate', event => {
+  event.waitUntil(
+    caches.keys()
+      .then(keys => Promise.all(
+        keys
+          .filter(key => key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME)
+          .map(key => caches.delete(key))
+      ))
+      .then(() => self.clients.claim())
   );
 });
 
-// ── Fetch: network-first for everything, cache as fallback ──
-self.addEventListener('fetch', (e) => {
-  if (e.request.method !== 'GET') return;
+self.addEventListener('fetch', event => {
+  const { request } = event;
+  if (request.method !== 'GET') return;
 
-  const url = new URL(e.request.url);
+  const url = new URL(request.url);
+  const isMedia = request.destination === 'video'
+    || request.destination === 'audio'
+    || /\.(m3u8|ts|mp4|mov|m4v)(?:$|\?)/i.test(url.pathname)
+    || url.hostname.includes('b-cdn.net');
 
-  // Skip video streams entirely — never cache, never intercept
-  if (url.hostname.includes('b-cdn.net') || url.pathname.endsWith('.m3u8') || url.pathname.endsWith('.ts') || url.pathname.endsWith('.mp4') || url.pathname.endsWith('.mov')) return;
+  // Media can be very large and must never be cached or replaced with app HTML.
+  if (isMedia) return;
 
-  // Network-first for ALL app files (HTML, CSS, JS)
-  // This ensures updates are always picked up immediately
-  // Cache is ONLY used when offline
-  const isAppFile = url.origin === location.origin;
-
-  if (isAppFile) {
-    e.respondWith(
-      fetch(e.request).then(response => {
-        // Got fresh response — update cache
+  if (url.origin === self.location.origin) {
+    event.respondWith((async () => {
+      try {
+        const response = await fetch(request);
         if (response.ok) {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone));
+          const cache = await caches.open(CACHE_NAME);
+          await cache.put(request, response.clone());
         }
         return response;
-      }).catch(() => {
-        // Offline — serve from cache
-        return caches.match(e.request).then(cached => {
-          return cached || caches.match('./index.html');
+      } catch (_) {
+        const cached = await caches.match(request);
+        if (cached) return cached;
+        if (request.mode === 'navigate') {
+          return (await caches.match('./index.html'))
+            || new Response('Dance Library is unavailable offline.', {
+              status: 503,
+              headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+            });
+        }
+        return new Response('This asset is unavailable offline.', {
+          status: 503,
+          headers: { 'Content-Type': 'text/plain; charset=utf-8' }
         });
-      })
-    );
+      }
+    })());
     return;
   }
 
-  // External resources (fonts, hls.js CDN) — cache on first success, serve from cache after
-  e.respondWith(
-    caches.match(e.request).then(cached => {
-      // Return cached immediately but also refresh in background
-      const fetchPromise = fetch(e.request).then(response => {
-        if (response.ok) {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone));
-        }
-        return response;
-      }).catch(() => null);
-
-      // If cached, return it immediately (stale-while-revalidate)
-      // If not cached, wait for network
-      return cached || fetchPromise;
-    })
+  const refresh = fetch(request).then(async response => {
+    if (response.ok || response.type === 'opaque') {
+      const cache = await caches.open(CACHE_NAME);
+      await cache.put(request, response.clone());
+    }
+    return response;
+  });
+  event.waitUntil(refresh.catch(() => undefined));
+  event.respondWith(
+    caches.match(request)
+      .then(cached => cached || refresh)
+      .catch(() => Response.error())
   );
 });
 
-// ── Message handler: allow page to force cache clear ──
-self.addEventListener('message', (e) => {
-  if (e.data === 'CLEAR_CACHE') {
-    caches.keys().then(keys =>
-      Promise.all(keys.map(k => caches.delete(k)))
-    ).then(() => {
-      // Re-cache fresh app shell
-      caches.open(CACHE_NAME).then(cache => cache.addAll(APP_FILES));
-    });
-  }
+self.addEventListener('message', event => {
+  if (event.data !== 'CLEAR_CACHE') return;
+
+  event.waitUntil(
+    caches.keys()
+      .then(keys => Promise.all(
+        keys.filter(key => key.startsWith(CACHE_PREFIX)).map(key => caches.delete(key))
+      ))
+      .then(() => caches.open(CACHE_NAME))
+      .then(cache => cache.addAll(APP_FILES))
+  );
 });

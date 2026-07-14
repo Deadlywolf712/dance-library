@@ -3,36 +3,57 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>Dance Masterclass Library</title>
-  <meta name="description" content="Personal dance video practice library with bookmarks, notes, A-B loop, mirror mode, and 100+ themes.">
-  <meta property="og:title" content="Dance Masterclass Library">
-  <meta property="og:description" content="Personal dance video practice library with bookmarks, notes, A-B loop, mirror mode, and 100+ themes.">
+  <title>Dance Library — Practice with purpose</title>
+  <meta name="description" content="A personal dance practice library with focused playback, bookmarks, notes, progress tracking, and 100+ themes.">
+  <meta property="og:title" content="Dance Library">
+  <meta property="og:description" content="Practice with focused playback, bookmarks, notes, and progress that stays on your device.">
   <meta property="og:type" content="website">
-  <meta name="twitter:card" content="summary">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💃</text></svg>">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
+  <meta property="og:image" content="https://deadlywolf712.github.io/dance-library/og.png">
+  <meta property="og:image:width" content="1731">
+  <meta property="og:image:height" content="909">
+  <meta property="og:image:alt" content="Dance Library — Practice with purpose">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="https://deadlywolf712.github.io/dance-library/og.png">
+  <meta name="theme-color" content="#fdf6e3">
+  <meta name="color-scheme" content="light dark">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <link rel="icon" href="./icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="./icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400;1,600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&amp;family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400;1,600&amp;display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
   <link rel="manifest" href="manifest.json">
   <!-- Loading spinner (shown while data.js loads) -->
   <style>
-    .app-loader { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: #fdf6e3; z-index: 99999; transition: opacity 0.3s; }
+    .app-loader { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: #fdf6e3; color: #3d5158; z-index: 99999; transition: opacity 0.3s; }
+    .app-loader-inner { display: grid; justify-items: center; gap: 14px; padding: 28px; text-align: center; }
     .app-loader-spin { width: 36px; height: 36px; border: 3px solid rgba(0,0,0,0.1); border-top-color: #cb4b16; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    .app-loader-copy { margin: 0; font: 500 0.9rem/1.5 system-ui, sans-serif; }
+    .app-loader-error .app-loader-spin { display: none; }
     @keyframes spin { to { transform: rotate(360deg); } }
   </style>
-  <!-- Load Data before JS logic -->
-  <script src="data.js"></script>
-  <script src="salsa_course.js"></script>
+  <!-- Local catalog scripts are deferred in order so the loading screen can paint first. -->
+  <script id="hls-runtime" async crossorigin="anonymous" src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
+  <script defer src="data.js"></script>
+  <script defer src="salsa_course.js"></script>
+  <script defer src="app.js"></script>
 </head>
 <body>
-  <div class="app-loader" id="app-loader"><div class="app-loader-spin"></div></div>
+  <a class="skip-link" href="#main-content">Skip to library content</a>
+  <div class="app-loader" id="app-loader" role="status" aria-live="polite" aria-atomic="true">
+    <div class="app-loader-inner">
+      <div class="app-loader-spin" aria-hidden="true"></div>
+      <p class="app-loader-copy">Preparing your dance library…</p>
+    </div>
+  </div>
+  <noscript><div class="noscript-banner" role="alert">Dance Library needs JavaScript to load your lessons and practice tools.</div></noscript>
   <div class="noise-overlay"></div>
 
   <!-- Sidebar Navigation -->
-  <aside id="sidebar">
+  <aside id="sidebar" aria-label="Dance library navigation">
     <div class="sidebar-header">
-      <div class="sidebar-title">Masterclass Library</div>
+      <div class="sidebar-title">Dance Library</div>
       <div class="sidebar-actions">
         <button class="settings-btn" id="home-sidebar-btn" aria-label="Home" title="Go Home">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
@@ -61,7 +82,8 @@
       </div>
     </div>
     <div class="search-container">
-      <input type="text" id="search-input" placeholder="Search videos or moves...">
+      <label class="visually-hidden" for="search-input">Search lessons</label>
+      <input type="search" id="search-input" placeholder="Search lessons or moves…" autocomplete="off" aria-controls="library-nav">
     </div>
     <div id="library-nav">
       <!-- Accordion injected via JS -->
@@ -69,9 +91,9 @@
   </aside>
 
   <!-- Main Content -->
-  <main id="main-content">
+  <main id="main-content" tabindex="-1">
     
-    <button id="open-sidebar-btn" class="floating-menu-btn" aria-label="Open Menu">
+    <button id="open-sidebar-btn" class="floating-menu-btn" aria-label="Open library navigation" aria-controls="sidebar" aria-expanded="false">
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <line x1="3" y1="12" x2="21" y2="12"></line>
         <line x1="3" y1="6" x2="21" y2="6"></line>
@@ -81,10 +103,10 @@
     
     <!-- Mobile Header -->
     <div id="mobile-header">
-      <button class="menu-toggle" id="menu-toggle-btn" aria-label="Menu">
+      <button class="menu-toggle" id="menu-toggle-btn" aria-label="Open library navigation" aria-controls="sidebar" aria-expanded="false">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
       </button>
-      <div class="sidebar-title">Masterclass Library</div>
+      <div class="sidebar-title">Dance Library</div>
       <div class="mobile-header-actions">
         <button class="mobile-header-btn" id="mobile-notes-btn" aria-label="Notes" title="My Notes">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
@@ -92,13 +114,13 @@
         <button class="mobile-header-btn" id="mobile-favs-btn" aria-label="Favorites" title="Favorites">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
         </button>
-        <button class="mobile-header-btn" id="mobile-history-btn" aria-label="History" title="Watch History">
+        <button class="mobile-header-btn mobile-secondary-action" id="mobile-history-btn" aria-label="History" title="Watch History">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
         </button>
-        <button class="mobile-header-btn" id="mobile-help-btn" aria-label="Guide" title="Guide">
+        <button class="mobile-header-btn mobile-secondary-action" id="mobile-help-btn" aria-label="Guide" title="Guide">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
         </button>
-        <button class="mobile-header-btn" id="mobile-settings-btn" aria-label="Settings" title="Settings">
+        <button class="mobile-header-btn mobile-secondary-action" id="mobile-settings-btn" aria-label="Settings" title="Settings">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
         </button>
       </div>
@@ -106,9 +128,15 @@
 
     <!-- Home View (Tiles) -->
     <div id="home-view">
-      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-        <h1 class="home-title" style="margin-bottom: 0;">Dance Library</h1>
-        <div class="home-header-actions" style="display: flex; gap: 8px; align-items: center;">
+      <section class="home-hero" aria-labelledby="home-title">
+        <nav id="home-breadcrumbs" class="home-breadcrumbs" aria-label="Library breadcrumb"></nav>
+        <div class="home-hero-row">
+          <div class="home-intro">
+            <p class="home-eyebrow">Your personal practice space</p>
+            <h1 class="home-title" id="home-title" tabindex="-1">Dance Library</h1>
+            <p class="home-lede">Find a lesson, slow it down, loop the hard part, and keep the notes that move your dancing forward.</p>
+          </div>
+          <div class="home-header-actions">
           <button class="home-help-btn" id="home-notes-btn" title="My Notes &amp; Favorites">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
             Notes
@@ -125,12 +153,24 @@
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
             Guide
           </button>
-<button class="home-help-btn" id="home-settings-btn" title="Settings">
+          <button class="home-help-btn" id="home-settings-btn" title="Settings">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
             Settings
           </button>
+          </div>
         </div>
-      </div>
+        <button class="home-search-launch" id="home-search-btn" type="button" aria-haspopup="dialog" aria-controls="spotlight-overlay">
+          <span class="home-search-icon" aria-hidden="true">⌕</span>
+          <span id="home-search-label">Search your lessons</span>
+          <kbd>Ctrl K</kbd>
+        </button>
+        <div class="home-stats" role="list" aria-label="Library overview">
+          <div class="home-stat" role="listitem"><strong data-stat="videos">—</strong><span>lessons</span></div>
+          <div class="home-stat" role="listitem"><strong data-stat="styles">—</strong><span>styles</span></div>
+          <div class="home-stat" role="listitem"><strong data-stat="watched">—</strong><span>watched</span></div>
+          <div class="home-stat" role="listitem"><strong data-stat="favorites">—</strong><span>favorites</span></div>
+        </div>
+      </section>
       <div class="course-grid" id="course-grid">
         <!-- Tiles injected via JS -->
       </div>
@@ -145,28 +185,28 @@
           <button class="video-sequence-arrow video-sequence-prev" id="prev-video-overlay" type="button" aria-label="Previous video" disabled>
             <svg viewBox="0 0 24 24" width="28" height="28" stroke="currentColor" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
           </button>
-          <video id="video-player" controls preload="metadata"></video>
+          <video id="video-player" controls preload="metadata" aria-labelledby="video-title"></video>
           <button class="video-sequence-arrow video-sequence-next" id="next-video-overlay" type="button" aria-label="Next video" disabled>
             <svg viewBox="0 0 24 24" width="28" height="28" stroke="currentColor" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
           </button>
           <div class="player-overlay-controls">
-            <button id="theater-btn" class="overlay-btn" title="Theater mode (T)">
+          <button id="theater-btn" class="overlay-btn" type="button" title="Theater mode (T)" aria-label="Toggle theater mode" aria-pressed="false">
               <svg width="16" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
             </button>
-            <button id="mirror-btn" class="overlay-btn" title="Mirror video (M)">
+          <button id="mirror-btn" class="overlay-btn" type="button" title="Mirror video (M)" aria-label="Mirror video" aria-pressed="false">
               <svg width="16" height="14" viewBox="0 0 20 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 1 1 8 6 15"/><polyline points="14 1 19 8 14 15"/><line x1="10" y1="1" x2="10" y2="15" stroke-dasharray="2 2"/></svg>
             </button>
-            <button id="ab-loop-btn" class="overlay-btn" title="A-B Loop: set start [ set end ] clear Esc">A</button>
-            <div id="speed-overlay" class="custom-speed-control">
-              <button id="current-speed-btn">1.0x</button>
-              <div id="speed-dropdown" class="speed-dropdown">
-                <div data-speed="2.0">2.0x</div>
-                <div data-speed="1.75">1.75x</div>
-                <div data-speed="1.5">1.5x</div>
-                <div data-speed="1.25">1.25x</div>
-                <div data-speed="1.0" class="active">1.0x</div>
-                <div data-speed="0.75">0.75x</div>
-                <div data-speed="0.5">0.5x</div>
+          <button id="ab-loop-btn" class="overlay-btn" type="button" title="A-B Loop: set start [ set end ] clear Esc" aria-label="Set A-B loop start" aria-pressed="false">A</button>
+          <div id="speed-overlay" class="custom-speed-control">
+              <button id="current-speed-btn" type="button" aria-haspopup="menu" aria-controls="speed-dropdown" aria-expanded="false" aria-label="Playback speed, 1.0x">1.0x</button>
+              <div id="speed-dropdown" class="speed-dropdown" role="menu" aria-label="Playback speed">
+                <button type="button" role="menuitemradio" aria-checked="false" data-speed="2.0" tabindex="-1">2.0x</button>
+                <button type="button" role="menuitemradio" aria-checked="false" data-speed="1.75" tabindex="-1">1.75x</button>
+                <button type="button" role="menuitemradio" aria-checked="false" data-speed="1.5" tabindex="-1">1.5x</button>
+                <button type="button" role="menuitemradio" aria-checked="false" data-speed="1.25" tabindex="-1">1.25x</button>
+                <button type="button" role="menuitemradio" aria-checked="true" data-speed="1.0" class="active" tabindex="-1">1.0x</button>
+                <button type="button" role="menuitemradio" aria-checked="false" data-speed="0.75" tabindex="-1">0.75x</button>
+                <button type="button" role="menuitemradio" aria-checked="false" data-speed="0.5" tabindex="-1">0.5x</button>
               </div>
             </div>
           </div>
@@ -174,19 +214,19 @@
         <div class="video-controls-bar" style="margin-top: 10px;">
           <div class="playback-controls-row">
             <div class="skip-controls">
-              <button id="skip-back-btn" class="skip-btn" title="Skip back 5s (←)">
+              <button id="skip-back-btn" class="skip-btn" type="button" title="Skip back 5s (←)" aria-label="Skip back 5 seconds">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="11 17 6 12 11 7"/></svg>
                 5s
               </button>
-              <button id="skip-fwd-btn" class="skip-btn" title="Skip forward 5s (→)">
+              <button id="skip-fwd-btn" class="skip-btn" type="button" title="Skip forward 5s (→)" aria-label="Skip forward 5 seconds">
                 5s
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="13 7 18 12 13 17"/></svg>
               </button>
             </div>
             <div class="speed-presets">
-              <button id="speed-learn" class="speed-preset-btn" data-speed="0.5" title="Half speed — break down the move">Learn</button>
-              <button id="speed-practice" class="speed-preset-btn" data-speed="0.75" title="3/4 speed — practice along">Practice</button>
-              <button id="speed-full" class="speed-preset-btn active" data-speed="1.0" title="Full speed">Full</button>
+              <button id="speed-learn" class="speed-preset-btn" data-speed="0.5" title="Half speed — break down the move" aria-pressed="false">Learn</button>
+              <button id="speed-practice" class="speed-preset-btn" data-speed="0.75" title="3/4 speed — practice along" aria-pressed="false">Practice</button>
+              <button id="speed-full" class="speed-preset-btn active" data-speed="1.0" title="Full speed" aria-pressed="true">Full</button>
             </div>
           </div>
           <label class="source-toggle">
@@ -206,7 +246,7 @@
               <span id="video-breadcrumb">Select a video</span>
             </div>
             <div style="display: flex; align-items: center; gap: 10px;">
-              <h1 id="video-title" style="border: none; padding: 0; margin: 0; color: var(--text-main);">Select a video</h1>
+              <h1 id="video-title" tabindex="-1" style="border: none; padding: 0; margin: 0; color: var(--text-main);">Select a video</h1>
               <button id="fav-btn" class="fav-btn" title="Add to favorites" aria-label="Favorite">
                 <svg id="fav-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
               </button>
@@ -237,7 +277,7 @@
           </div>
           <div id="bookmarks-list" class="bookmarks-list"></div>
           <div id="bookmark-edit-row" class="bookmark-edit-row" style="display: none;">
-            <span id="bookmark-edit-label" class="bookmark-edit-label"></span>
+            <label id="bookmark-edit-label" class="bookmark-edit-label" for="bookmark-edit-input"></label>
             <input type="text" id="bookmark-edit-input" class="bookmark-edit-input" placeholder="Add a note (optional, Enter to save)" maxlength="120">
           </div>
         </div>
@@ -250,75 +290,79 @@
   </main>
 
   <!-- Notes Modal (bookmarks only) -->
-  <div id="notes-view" class="notes-modal-overlay" style="display: none;">
-    <div class="notes-modal-content">
+  <div id="notes-view" class="notes-modal-overlay" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="notes-dialog-title" aria-hidden="true">
+    <div class="notes-modal-content" tabindex="-1">
       <div class="notes-modal-header">
         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; width: 100%;">
-          <h2 style="margin: 0; font-family: var(--font-display); font-weight: 600; color: var(--text-main); font-size: 1.3rem;">My Notes</h2>
+          <h2 id="notes-dialog-title" style="margin: 0; font-family: var(--font-display); font-weight: 600; color: var(--text-main); font-size: 1.3rem;">My Notes</h2>
           <div style="display: flex; gap: 8px; align-items: center;">
             <button class="bookmark-add-btn open-export-modal-btn" title="Export or import data" style="opacity: 0.7; font-size: 0.75rem;">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -1px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
               Export / Import
             </button>
-            <button class="shortcuts-close" id="close-notes-modal" title="Close">&times;</button>
+            <button class="shortcuts-close" id="close-notes-modal" type="button" aria-label="Close notes">&times;</button>
           </div>
         </div>
         <p id="notes-subtitle" style="color: var(--text-muted); font-size: 0.85rem; margin: 8px 0 0 0;"></p>
       </div>
       <div class="notes-search-wrap">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.4;min-width:16px;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input type="text" id="notes-search-input" placeholder="Search bookmarks and notes..." autocomplete="off">
+        <label class="visually-hidden" for="notes-search-input">Search bookmarks and notes</label>
+        <input type="search" id="notes-search-input" placeholder="Search bookmarks and notes…" autocomplete="off" data-dialog-initial-focus>
       </div>
       <div id="notes-content" style="overflow-y: auto; flex: 1;"></div>
     </div>
   </div>
 
   <!-- Favorites Modal -->
-  <div id="favorites-modal" class="notes-modal-overlay" style="display: none;">
-    <div class="notes-modal-content" style="max-width: 650px;">
+  <div id="favorites-modal" class="notes-modal-overlay" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="favorites-dialog-title" aria-hidden="true">
+    <div class="notes-modal-content" tabindex="-1" style="max-width: 650px;">
       <div class="notes-modal-header">
         <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-          <h2 style="margin: 0; font-family: var(--font-display); font-weight: 600; color: var(--text-main); font-size: 1.3rem;">Favorites</h2>
-          <button class="shortcuts-close" id="close-favorites-modal" title="Close">&times;</button>
+          <h2 id="favorites-dialog-title" style="margin: 0; font-family: var(--font-display); font-weight: 600; color: var(--text-main); font-size: 1.3rem;">Favorites</h2>
+          <button class="shortcuts-close" id="close-favorites-modal" type="button" aria-label="Close favorites">&times;</button>
         </div>
       </div>
       <div class="notes-search-wrap">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.4;min-width:16px;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input type="text" id="favorites-search-input" placeholder="Search favorites..." autocomplete="off">
+        <label class="visually-hidden" for="favorites-search-input">Search favorites</label>
+        <input type="search" id="favorites-search-input" placeholder="Search favorites…" autocomplete="off" data-dialog-initial-focus>
       </div>
       <div id="favorites-content" style="overflow-y: auto; flex: 1; padding: 16px 24px 24px;"></div>
     </div>
   </div>
 
   <!-- Watch History Modal -->
-  <div id="history-modal" class="notes-modal-overlay" style="display: none;">
-    <div class="notes-modal-content" style="max-width: 600px;">
+  <div id="history-modal" class="notes-modal-overlay" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="history-dialog-title" aria-hidden="true">
+    <div class="notes-modal-content" tabindex="-1" style="max-width: 600px;">
       <div class="notes-modal-header">
         <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-          <h2 style="margin: 0; font-family: var(--font-display); font-weight: 600; color: var(--text-main); font-size: 1.3rem;">Watch History</h2>
+          <h2 id="history-dialog-title" style="margin: 0; font-family: var(--font-display); font-weight: 600; color: var(--text-main); font-size: 1.3rem;">Watch History</h2>
           <div style="display:flex; align-items:center; gap:8px;">
             <button class="bookmark-add-btn" id="clear-history-modal" type="button">Clear</button>
-            <button class="shortcuts-close" id="close-history-modal" title="Close">&times;</button>
+            <button class="shortcuts-close" id="close-history-modal" type="button" aria-label="Close watch history">&times;</button>
           </div>
         </div>
       </div>
       <div class="notes-search-wrap">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.4;min-width:16px;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input type="text" id="history-search-input" placeholder="Search watch history..." autocomplete="off">
+        <label class="visually-hidden" for="history-search-input">Search watch history</label>
+        <input type="search" id="history-search-input" placeholder="Search watch history…" autocomplete="off" data-dialog-initial-focus>
       </div>
       <div id="history-content" style="overflow-y: auto; flex: 1; padding: 16px 24px 24px;"></div>
     </div>
   </div>
 
 <!-- Settings Modal -->
-  <div id="settings-modal">
-    <div class="modal-content">
+  <div id="settings-modal" role="dialog" aria-modal="true" aria-labelledby="settings-dialog-title" aria-hidden="true">
+    <div class="modal-content" tabindex="-1">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-        <h3 style="margin: 0;">Settings</h3>
-        <button class="shortcuts-close" id="close-settings-x" title="Close">&times;</button>
+        <h3 id="settings-dialog-title" style="margin: 0;">Settings</h3>
+        <button class="shortcuts-close" id="close-settings-x" type="button" aria-label="Close settings" data-dialog-initial-focus>&times;</button>
       </div>
+      <p class="settings-intro">Your theme, progress, favorites, and notes are stored on this device.</p>
       <div class="setting-row">
-        <label for="theme-select">Theme (Terminus Palettes)</label>
+        <label for="theme-select">Appearance</label>
         <select id="theme-select">
           <option value="tokyo-night">Tokyo Night</option>
           <option value="dracula">Dracula</option>
@@ -426,18 +470,18 @@
         </select>
         <div id="fav-themes-row" class="fav-themes-row" style="display: none;"></div>
         <div class="theme-nav-row">
-          <button id="theme-prev" class="theme-nav-btn" title="Previous theme">&larr;</button>
+          <button id="theme-prev" class="theme-nav-btn" type="button" title="Previous theme" aria-label="Previous theme">&larr;</button>
           <span id="theme-counter" class="theme-counter"></span>
-          <button id="theme-next" class="theme-nav-btn" title="Next theme">&rarr;</button>
-          <button id="theme-fav-btn" class="theme-fav-btn" title="Favorite this theme">&#9734;</button>
+          <button id="theme-next" class="theme-nav-btn" type="button" title="Next theme" aria-label="Next theme">&rarr;</button>
+          <button id="theme-fav-btn" class="theme-fav-btn" type="button" title="Favorite this theme" aria-label="Favorite this theme" aria-pressed="false">&#9734;</button>
         </div>
       </div>
       <div class="setting-row" style="margin-top: 15px;">
-        <label for="bunny-lib-id" style="display:block; margin-bottom: 5px; color: var(--text-muted); font-size: 0.9rem;">Bunny CDN Pull Zone</label>
+        <label for="bunny-lib-id" style="display:block; margin-bottom: 5px; color: var(--text-muted); font-size: 0.9rem;">Streaming source <span aria-hidden="true">·</span> Advanced</label>
         <input type="text" id="bunny-lib-id" placeholder="e.g. vz-xxxx.b-cdn.net" style="width: 100%; padding: 8px; background: var(--bg-base); border: 1px solid var(--border-light); color: var(--text-main); border-radius: 4px;">
       </div>
       <div class="setting-row" style="margin-top: 20px; border-top: 1px solid var(--border-light); padding-top: 15px;">
-        <label style="display:block; margin-bottom: 10px; color: var(--text-muted); font-size: 0.9rem;">Reset Data</label>
+        <h3 class="setting-section-title">Data &amp; privacy</h3>
         <div class="reset-buttons">
           <button id="reset-watched" class="reset-btn">Clear Watch History</button>
           <button id="reset-bookmarks" class="reset-btn">Clear All Bookmarks &amp; Notes</button>
@@ -447,10 +491,10 @@
         </div>
       </div>
       <div class="setting-row" style="margin-top: 20px; border-top: 1px solid var(--border-light); padding-top: 15px;">
-        <label style="display:block; margin-bottom: 10px; color: var(--text-muted); font-size: 0.9rem;">Export / Import</label>
+        <h3 class="setting-section-title">Export / Import</h3>
         <div class="reset-buttons">
           <button class="reset-btn open-export-modal-btn" style="background: var(--accent); color: var(--pill-text);">Export / Import Data</button>
-          <input type="file" id="import-file-input" accept=".json" style="display: none;">
+          <input type="file" id="import-file-input" accept=".json" aria-label="Import backup file" hidden>
         </div>
       </div>
       <button class="close-modal" id="save-settings" style="margin-bottom: 10px;">Save & Close</button>
@@ -459,11 +503,11 @@
   </div>
 
   <!-- Export / Import Modal -->
-  <div id="export-modal" class="help-modal" style="display:none;">
-    <div class="help-modal-content" style="max-width: 500px;">
+  <div id="export-modal" class="help-modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="export-modal-title" aria-hidden="true">
+    <div class="help-modal-content" tabindex="-1" style="max-width: 500px;">
       <div class="help-modal-header">
         <h3 id="export-modal-title">Export / Import</h3>
-        <button class="shortcuts-close" id="close-export-modal">&times;</button>
+        <button class="shortcuts-close" id="close-export-modal" type="button" aria-label="Close export and import" data-dialog-initial-focus>&times;</button>
       </div>
       <div class="help-modal-body">
         <div class="help-section">
@@ -478,11 +522,13 @@
               <input type="checkbox" id="exp-entire-library"> Include entire library (not just this video)
             </label>
           </div>
-          <div class="export-format-row">
-            <span style="font-size: 0.8rem; color: var(--text-muted);">Format:</span>
-            <label class="export-format-label"><input type="radio" name="export-format" value="markdown" checked> Markdown</label>
-            <label class="export-format-label"><input type="radio" name="export-format" value="json"> JSON (backup)</label>
-          </div>
+          <fieldset class="export-format-group">
+            <legend>Format</legend>
+            <div class="export-format-row">
+              <label class="export-format-label"><input type="radio" name="export-format" value="markdown" checked> Markdown</label>
+              <label class="export-format-label"><input type="radio" name="export-format" value="json"> JSON (backup)</label>
+            </div>
+          </fieldset>
           <div style="display: flex; gap: 8px; flex-wrap: wrap;">
             <button id="do-export" class="export-action-btn" style="flex: 1;">Download</button>
             <button id="do-email" class="export-action-btn" style="flex: 1; background: var(--bg-surface-hover); color: var(--text-main);">Email to myself</button>
@@ -506,23 +552,24 @@
   </div>
 
   <!-- Spotlight Search -->
-  <div id="spotlight-overlay" class="spotlight-overlay" style="display:none;">
-    <div class="spotlight-container">
+  <div id="spotlight-overlay" class="spotlight-overlay" style="display:none;" role="dialog" aria-modal="true" aria-label="Search dance lessons" aria-hidden="true">
+    <div class="spotlight-container" tabindex="-1">
       <div class="spotlight-input-wrap">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.5;min-width:20px;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input type="text" id="spotlight-input" placeholder="Search videos..." autocomplete="off">
+        <label class="visually-hidden" for="spotlight-input">Search dance lessons</label>
+        <input type="search" id="spotlight-input" placeholder="Search lessons…" autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="spotlight-results" aria-expanded="false" data-dialog-initial-focus>
         <kbd class="spotlight-kbd">Esc</kbd>
       </div>
-      <div id="spotlight-results" class="spotlight-results"></div>
+      <div id="spotlight-results" class="spotlight-results" role="listbox" aria-label="Matching lessons"></div>
     </div>
   </div>
 
   <!-- Keyboard Shortcuts Overlay -->
-  <div id="shortcuts-overlay" class="shortcuts-overlay" style="display:none;">
-    <div class="shortcuts-container">
+  <div id="shortcuts-overlay" class="shortcuts-overlay" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="shortcuts-dialog-title" aria-hidden="true">
+    <div class="shortcuts-container" tabindex="-1">
       <div class="shortcuts-header">
-        <h3>Keyboard Shortcuts</h3>
-        <button class="shortcuts-close" id="close-shortcuts">&times;</button>
+        <h3 id="shortcuts-dialog-title">Keyboard Shortcuts</h3>
+        <button class="shortcuts-close" id="close-shortcuts" type="button" aria-label="Close keyboard shortcuts" data-dialog-initial-focus>&times;</button>
       </div>
       <div class="shortcuts-grid">
         <div class="shortcuts-section">
@@ -550,11 +597,11 @@
   </div>
 
   <!-- Help Guide Modal -->
-  <div id="help-modal" class="help-modal" style="display:none;">
-    <div class="help-modal-content">
+  <div id="help-modal" class="help-modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="help-dialog-title" aria-hidden="true">
+    <div class="help-modal-content" tabindex="-1">
       <div class="help-modal-header">
-        <h3>Guide</h3>
-        <button class="shortcuts-close" id="close-help">&times;</button>
+        <h3 id="help-dialog-title">Guide</h3>
+        <button class="shortcuts-close" id="close-help" type="button" aria-label="Close guide" data-dialog-initial-focus>&times;</button>
       </div>
       <div class="help-modal-body">
         <div class="help-section">
@@ -600,7 +647,7 @@
         <div class="help-section">
           <h4>&#127912; Themes &amp; Settings</h4>
           <ul>
-            <li>Click the gear icon to open Settings. Choose from 30+ color themes.</li>
+            <li>Click the gear icon to open Settings. Choose from 100+ color themes.</li>
             <li>Configure your Bunny CDN pull zone for faster streaming.</li>
             <li>Reset watch history, bookmarks, favorites, or everything from Settings.</li>
           </ul>
@@ -615,8 +662,16 @@
     </div>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
-  <script src="app.js"></script>
-  <script>if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});</script>
+  <div id="app-status" class="app-status" role="status" aria-live="polite" aria-atomic="true"></div>
+  <script>
+    window.addEventListener('load', () => {
+      if (!('serviceWorker' in navigator)) return;
+      navigator.serviceWorker.register('./sw.js').catch(error => {
+        console.warn('Offline mode could not start:', error);
+        const status = document.getElementById('app-status');
+        if (status) status.textContent = 'Offline mode is unavailable in this browser session.';
+      });
+    });
+  </script>
 </body>
 </html>

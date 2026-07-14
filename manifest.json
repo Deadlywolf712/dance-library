@@ -1,16 +1,32 @@
 {
-  "name": "Dance Masterclass Library",
+  "id": "./",
+  "name": "Dance Library",
   "short_name": "Dance Library",
-  "description": "Personal dance video practice library with bookmarks, notes, and A-B loop",
-  "start_url": "./index.html",
+  "description": "A personal dance practice library with focused playback, bookmarks, notes, and progress tracking.",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
   "background_color": "#fdf6e3",
-  "theme_color": "#cb4b16",
+  "theme_color": "#9f3510",
+  "categories": ["education", "lifestyle", "entertainment"],
   "icons": [
     {
-      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💃</text></svg>",
+      "src": "./icon.svg",
       "sizes": "any",
       "type": "image/svg+xml"
+    },
+    {
+      "src": "./icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
     }
   ]
 }

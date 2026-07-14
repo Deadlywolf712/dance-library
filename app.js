@@ -1,37 +1,122 @@
 document.addEventListener('DOMContentLoaded', () => {
+    const loader = document.getElementById('app-loader');
+
+    function showFatalError(message) {
+        console.error(message);
+        if (!loader) return;
+        loader.classList.add('app-loader-error');
+        loader.setAttribute('role', 'alert');
+        loader.innerHTML = '';
+
+        const inner = document.createElement('div');
+        inner.className = 'app-loader-inner';
+        const title = document.createElement('strong');
+        title.textContent = 'Dance Library could not start';
+        const copy = document.createElement('p');
+        copy.className = 'app-loader-copy';
+        copy.textContent = message;
+        const retry = document.createElement('button');
+        retry.type = 'button';
+        retry.className = 'loader-retry-btn';
+        retry.textContent = 'Reload library';
+        retry.addEventListener('click', () => location.reload());
+        inner.append(title, copy, retry);
+        loader.appendChild(inner);
+    }
+
     // Check if videoData exists from data.js
     if (typeof videoData === 'undefined') {
-        alert("Error: data.js not found or corrupted. Please run generate_data_js.py");
+        showFatalError('The lesson catalog did not load. Check your connection, then reload the library.');
         return;
     }
 
     const checkIsMobile = () => window.innerWidth <= 768 || /Mobi|Android/i.test(navigator.userAgent);
     const isHosted = location.hostname.includes('github.io') || location.protocol === 'https:';
+    const canUseLocalMedia = location.protocol === 'file:' || ['localhost', '127.0.0.1', '::1'].includes(location.hostname);
+    const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const preferredScrollBehavior = () => reducedMotionQuery.matches ? 'auto' : 'smooth';
 
-    // Safe JSON parse from localStorage (never crashes on corrupt data)
-    function safeLoad(key, fallback) {
-        try { return JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback)); }
-        catch(e) { console.warn('Corrupt localStorage key:', key, e); localStorage.removeItem(key); return fallback; }
+    let storageWarningShown = false;
+    let storageAccessFailed = false;
+
+    function warnStorage(key, error) {
+        storageAccessFailed = true;
+        const firstWarning = !storageWarningShown;
+        if (!storageWarningShown) {
+            storageWarningShown = true;
+            console.warn('Browser storage is unavailable:', key, error);
+        }
+        return firstWarning;
+    }
+
+    function safeGet(key, fallback = null) {
+        try {
+            const value = localStorage.getItem(key);
+            return value === null ? fallback : value;
+        } catch (error) {
+            warnStorage(key, error);
+            return fallback;
+        }
+    }
+
+    function safeRemove(key) {
+        try {
+            localStorage.removeItem(key);
+            return true;
+        } catch (error) {
+            warnStorage(key, error);
+            return false;
+        }
+    }
+
+    const isRecord = value => value && typeof value === 'object' && !Array.isArray(value);
+    const isFiniteTime = value => Number.isFinite(Number(value)) && Number(value) >= 0;
+    const storageValidators = {
+        watchedVideos: value => Array.isArray(value) && value.every(item => typeof item === 'string'),
+        favoriteVideos: value => Array.isArray(value) && value.every(item => typeof item === 'string'),
+        favoriteThemes: value => Array.isArray(value) && value.every(item => typeof item === 'string'),
+        collapsedSections: value => isRecord(value) && Object.values(value).every(item => typeof item === 'boolean'),
+        videoPositions: value => isRecord(value) && Object.values(value).every(isFiniteTime),
+        videoLastWatched: value => isRecord(value) && Object.values(value).every(isFiniteTime),
+        videoBookmarks: value => isRecord(value) && Object.values(value).every(items =>
+            Array.isArray(items) && items.every(item =>
+                isFiniteTime(item)
+                || (isRecord(item)
+                    && isFiniteTime(item.t)
+                    && (item.n === undefined || (typeof item.n === 'string' && item.n.length <= 2000))
+                    && (item.ts === undefined || isFiniteTime(item.ts)))
+            )
+        )
+    };
+
+    // Safe JSON parse with schema validation (never crashes on corrupt or wrong-shaped data).
+    function safeLoad(key, fallback, validate = null) {
+        const raw = safeGet(key);
+        if (raw === null) return fallback;
+        try {
+            const parsed = JSON.parse(raw);
+            const validator = validate || storageValidators[key] || (() => true);
+            if (!validator(parsed)) throw new TypeError(`Unexpected data shape for ${key}`);
+            return parsed;
+        } catch (error) {
+            console.warn('Ignoring invalid browser storage:', key, error);
+            safeRemove(key);
+            return fallback;
+        }
     }
 
     // Safe localStorage write (handles quota exceeded, private mode, disabled storage)
-    let storageWarningShown = false;
     function safeStore(key, value) {
         try {
             const serialized = typeof value === 'string' ? value : JSON.stringify(value);
             localStorage.setItem(key, serialized);
+            return true;
         }
         catch(e) {
-            if (!storageWarningShown) {
-                storageWarningShown = true;
-                console.warn('Storage write failed:', key, e);
-                // Show non-blocking toast if storage is full
-                const toast = document.createElement('div');
-                toast.className = 'resume-toast';
-                toast.textContent = 'Storage full — some data may not save. Clear old data in Settings.';
-                document.body.appendChild(toast);
-                setTimeout(() => toast.remove(), 4000);
+            if (warnStorage(key, e)) {
+                showToast('Practice progress cannot be saved in this browser session.', 5000, true);
             }
+            return false;
         }
     }
 
@@ -45,20 +130,70 @@ document.addEventListener('DOMContentLoaded', () => {
         return compareNatural(a.title, b.title) || compareNatural(a.path, b.path);
     }
 
+    const VIDEO_EXTENSION_RE = /\.(mp4|mov|m4v)$/i;
+
+    function titleFromFilename(filename) {
+        return String(filename || '').replace(VIDEO_EXTENSION_RE, '');
+    }
+
+    function escapeHtml(value) {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    async function copyText(text) {
+        if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+            try {
+                await navigator.clipboard.writeText(text);
+                return true;
+            } catch (_) {
+                // Fall through for file:// and browsers without clipboard permission.
+            }
+        }
+
+        const input = document.createElement('textarea');
+        input.value = text;
+        input.setAttribute('readonly', '');
+        input.style.position = 'fixed';
+        input.style.opacity = '0';
+        document.body.appendChild(input);
+        input.select();
+        let copied = false;
+        try { copied = document.execCommand('copy'); } catch (_) { copied = false; }
+        input.remove();
+        return copied;
+    }
+
+    function makeKeyboardAccessible(element, activate, label) {
+        if (!element) return;
+        element.tabIndex = 0;
+        if (!element.hasAttribute('role')) element.setAttribute('role', 'button');
+        if (label) element.setAttribute('aria-label', label);
+        element.addEventListener('keydown', (event) => {
+            if (event.target !== element || (event.key !== 'Enter' && event.key !== ' ')) return;
+            event.preventDefault();
+            activate(event);
+        });
+    }
+
     // State
     const state = {
         tree: {},
         currentVideo: null,
-        watched: new Set(safeLoad('watchedVideos', [])),
-        useBunny: isHosted || checkIsMobile() ? true : (localStorage.getItem('useBunny') === 'true'),
-        theme: localStorage.getItem('theme') || 'solarized-light',
-        bunnyPullZone: localStorage.getItem('bunny_pull_zone') || (typeof BUNNY_PULL_ZONE !== 'undefined' ? BUNNY_PULL_ZONE : ''),
+        watched: new Set(safeLoad('watchedVideos', [], Array.isArray)),
+        useBunny: isHosted || checkIsMobile() ? true : (safeGet('useBunny', 'false') === 'true'),
+        theme: safeGet('theme', 'solarized-light'),
+        bunnyPullZone: safeGet('bunny_pull_zone', typeof BUNNY_PULL_ZONE !== 'undefined' ? BUNNY_PULL_ZONE : ''),
         loopA: null,
         loopB: null,
         playbackSpeed: 1.0,
         mirrored: false,
-        favorites: new Set(safeLoad('favoriteVideos', [])),
-        lastWatched: safeLoad('videoLastWatched', {})
+        favorites: new Set(safeLoad('favoriteVideos', [], Array.isArray)),
+        lastWatched: safeLoad('videoLastWatched', {}, value => value && typeof value === 'object' && !Array.isArray(value))
     };
 
     // Elements
@@ -76,7 +211,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         videoTitle: document.getElementById('video-title'),
         videoSummary: document.getElementById('video-summary'),
-        speedDropdownBtns: document.querySelectorAll('#speed-dropdown div'),
+        speedDropdownBtns: document.querySelectorAll('#speed-dropdown [data-speed]'),
         currentSpeedBtn: document.getElementById('current-speed-btn'),
         sourceToggle: document.getElementById('source-toggle-cb'),
         collapseAllBtn: document.getElementById('collapse-all-btn'),
@@ -124,24 +259,27 @@ document.addEventListener('DOMContentLoaded', () => {
     // Notes manager search state (used in renderNotesView)
     let notesSearchQuery = '';
 
-    // Initialize
-    init();
-
     function init() {
         parseDataToTree();
+        const knownThemes = new Set([...elements.themeSelect.options].map(option => option.value));
+        if (!knownThemes.has(state.theme)) state.theme = 'solarized-light';
         applyTheme(state.theme);
         renderNavigation();
         renderHomeTiles(); // start at root
         setupEventListeners();
+        setupDialogAccessibility();
+        window.addEventListener('popstate', restoreRoute);
+        queueMicrotask(restoreRoute);
         
         // Init UI state
-        elements.sourceToggle.checked = isHosted || checkIsMobile() ? true : state.useBunny;
+        elements.sourceToggle.checked = isHosted ? true : state.useBunny;
+        elements.sourceToggle.disabled = isHosted;
         elements.themeSelect.value = state.theme;
         updateNotesBadge();
 
         // Hide loading spinner
-        const loader = document.getElementById('app-loader');
         if (loader) { loader.style.opacity = '0'; setTimeout(() => loader.remove(), 300); }
+        if (storageAccessFailed) showToast('Practice progress will not persist in this browser session.', 5000, true);
     }
 
     // Parse Data into Hierarchical Tree
@@ -182,7 +320,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 currentLevel = currentLevel.subfolders[folder];
             }
             
-            const title = filename.replace(/\.(mp4|mov)$/i, "");
+            const title = titleFromFilename(filename);
             currentLevel.videos.push({
                 title,
                 path,
@@ -224,11 +362,273 @@ document.addEventListener('DOMContentLoaded', () => {
         return count;
     }
 
+    function updateHomeStats() {
+        const totalVideos = Object.keys(videoData).length;
+        const activeStyles = Object.values(state.tree).filter(node => countVideos(node) > 0).length;
+        const watched = [...state.watched].filter(path => videoData[path]).length;
+        const favorites = [...state.favorites].filter(path => videoData[path]).length;
+        const values = { videos: totalVideos, styles: activeStyles, watched, favorites };
+        const formatter = new Intl.NumberFormat();
+
+        for (const [name, value] of Object.entries(values)) {
+            const target = document.querySelector(`[data-stat="${name}"]`);
+            if (target) target.textContent = formatter.format(value);
+        }
+
+        const searchLabel = document.getElementById('home-search-label');
+        if (searchLabel) searchLabel.textContent = `Search ${formatter.format(totalVideos)} lessons`;
+    }
+
+    const dialogFocusRestoreSuppressed = new WeakSet();
+    const visibleDialogs = new WeakSet();
+    const openDialogStack = [];
+    let sidebarReturnFocus = null;
+
+    function hasOpenDialog() {
+        return [...document.querySelectorAll('[role="dialog"]')]
+            .some(dialog => getComputedStyle(dialog).display !== 'none');
+    }
+
+    function sidebarIsOpen() {
+        return window.innerWidth <= 768
+            ? elements.sidebar.classList.contains('open')
+            : !document.body.classList.contains('sidebar-closed');
+    }
+
+    function syncSidebarAccessibility(dialogOpen = hasOpenDialog()) {
+        const mobile = window.innerWidth <= 768;
+        const closed = mobile
+            ? !elements.sidebar.classList.contains('open')
+            : document.body.classList.contains('sidebar-closed');
+        const mobileOpen = mobile && !closed;
+        const mainContent = document.getElementById('main-content');
+        const skipLink = document.querySelector('.skip-link');
+
+        elements.sidebar.inert = dialogOpen || closed;
+        elements.sidebar.setAttribute('aria-hidden', String(dialogOpen || closed));
+        if (mainContent) mainContent.inert = dialogOpen || mobileOpen;
+        if (skipLink) skipLink.inert = dialogOpen || mobileOpen;
+        const expanded = window.innerWidth <= 768
+            ? elements.sidebar.classList.contains('open')
+            : !document.body.classList.contains('sidebar-closed');
+        for (const button of [elements.menuToggle, elements.openSidebarBtn]) {
+            if (button) button.setAttribute('aria-expanded', String(expanded));
+        }
+    }
+
+    function setSidebarOpen(open, { restoreFocus = true } = {}) {
+        const wasOpen = sidebarIsOpen();
+        if (open && !wasOpen && document.activeElement instanceof HTMLElement) {
+            sidebarReturnFocus = document.activeElement;
+        }
+
+        if (window.innerWidth <= 768) {
+            elements.sidebar.classList.toggle('open', open);
+            document.body.classList.toggle('sidebar-open', open);
+        } else {
+            document.body.classList.toggle('sidebar-closed', !open);
+        }
+        syncSidebarAccessibility();
+
+        if (open && !wasOpen) {
+            requestAnimationFrame(() => {
+                const first = elements.searchInput
+                    || elements.sidebar.querySelector('button, a[href], input, [tabindex]:not([tabindex="-1"])');
+                if (first instanceof HTMLElement) first.focus();
+            });
+        } else if (!open && wasOpen) {
+            const fallback = window.innerWidth <= 768 ? elements.menuToggle : elements.openSidebarBtn;
+            const target = sidebarReturnFocus?.isConnected ? sidebarReturnFocus : fallback;
+            sidebarReturnFocus = null;
+            if (restoreFocus) requestAnimationFrame(() => target?.focus());
+        }
+    }
+
+    function suppressDialogFocusReturn(dialog) {
+        if (dialog && getComputedStyle(dialog).display !== 'none') {
+            dialogFocusRestoreSuppressed.add(dialog);
+        }
+    }
+
+    function topmostOpenDialog() {
+        for (let index = openDialogStack.length - 1; index >= 0; index--) {
+            const dialog = openDialogStack[index];
+            if (dialog.isConnected && getComputedStyle(dialog).display !== 'none') return dialog;
+            openDialogStack.splice(index, 1);
+        }
+        return null;
+    }
+
+    function setupDialogAccessibility() {
+        const dialogs = [...document.querySelectorAll('[role="dialog"]')];
+        const returnFocus = new WeakMap();
+        const background = [document.getElementById('main-content')].filter(Boolean);
+        const focusableSelector = [
+            'a[href]',
+            'button:not([disabled])',
+            'input:not([disabled]):not([type="hidden"])',
+            'select:not([disabled])',
+            'textarea:not([disabled])',
+            '[tabindex]:not([tabindex="-1"])'
+        ].join(',');
+
+        const isOpen = dialog => getComputedStyle(dialog).display !== 'none';
+        const openDialogs = () => dialogs.filter(isOpen);
+
+        function syncDialogs() {
+            for (const dialog of dialogs) {
+                const open = isOpen(dialog);
+                const wasOpen = visibleDialogs.has(dialog);
+
+                if (open && !wasOpen) {
+                    visibleDialogs.add(dialog);
+                    const previousIndex = openDialogStack.indexOf(dialog);
+                    if (previousIndex >= 0) openDialogStack.splice(previousIndex, 1);
+                    openDialogStack.push(dialog);
+                    const active = document.activeElement;
+                    if (active instanceof HTMLElement && !dialog.contains(active)) {
+                        const sidebarFallback = window.innerWidth <= 768 ? elements.menuToggle : elements.openSidebarBtn;
+                        const target = elements.sidebar.contains(active) && !sidebarIsOpen()
+                            ? sidebarFallback
+                            : active;
+                        if (target) returnFocus.set(dialog, target);
+                    }
+                    requestAnimationFrame(() => {
+                        const initial = dialog.querySelector('[data-dialog-initial-focus]')
+                            || dialog.querySelector(focusableSelector)
+                            || dialog.querySelector('[tabindex="-1"]');
+                        if (initial instanceof HTMLElement) initial.focus();
+                    });
+                }
+
+                if (!open && wasOpen) {
+                    visibleDialogs.delete(dialog);
+                    const stackIndex = openDialogStack.indexOf(dialog);
+                    if (stackIndex >= 0) openDialogStack.splice(stackIndex, 1);
+                    if (dialogFocusRestoreSuppressed.has(dialog)) {
+                        dialogFocusRestoreSuppressed.delete(dialog);
+                    } else {
+                        const previous = returnFocus.get(dialog);
+                        if (previous instanceof HTMLElement && previous.isConnected) {
+                            requestAnimationFrame(() => previous.focus());
+                        }
+                    }
+                }
+            }
+
+            const topDialog = topmostOpenDialog();
+            for (const dialog of dialogs) {
+                const open = isOpen(dialog);
+                const topmost = open && dialog === topDialog;
+                dialog.inert = open && !topmost;
+                dialog.setAttribute('aria-hidden', String(!topmost));
+            }
+
+            const hasOpenDialog = openDialogs().length > 0;
+            for (const element of background) element.inert = hasOpenDialog;
+            syncSidebarAccessibility(hasOpenDialog);
+        }
+
+        const observer = new MutationObserver(syncDialogs);
+        for (const dialog of dialogs) observer.observe(dialog, { attributes: true, attributeFilter: ['style', 'class'] });
+        syncDialogs();
+
+        document.addEventListener('keydown', event => {
+            if (event.key !== 'Tab') return;
+            const dialog = topmostOpenDialog();
+            if (!dialog) return;
+
+            const focusables = [...dialog.querySelectorAll(focusableSelector)]
+                .filter(element => element instanceof HTMLElement && element.offsetParent !== null);
+            if (focusables.length === 0) {
+                event.preventDefault();
+                const container = dialog.querySelector('[tabindex="-1"]');
+                if (container instanceof HTMLElement) container.focus();
+                return;
+            }
+
+            const first = focusables[0];
+            const last = focusables[focusables.length - 1];
+            if (event.shiftKey && document.activeElement === first) {
+                event.preventDefault();
+                last.focus();
+            } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first.focus();
+            }
+        });
+    }
+
+    function setVideoRoute(videoPath, replace = false) {
+        try {
+            const url = new URL(location.href);
+            url.hash = `video=${encodeURIComponent(videoPath)}`;
+            const method = replace ? 'replaceState' : 'pushState';
+            if (url.href !== location.href) history[method]({ video: videoPath }, '', url);
+        } catch (error) {
+            console.warn('Could not update the lesson URL:', error);
+        }
+    }
+
+    function setHomeRoute(replace = false) {
+        try {
+            const url = new URL(location.href);
+            url.hash = '';
+            const method = replace ? 'replaceState' : 'pushState';
+            if (url.href !== location.href) history[method]({ view: 'home' }, '', url);
+        } catch (error) {
+            console.warn('Could not update the library URL:', error);
+        }
+    }
+
+    function focusHomeHeading() {
+        requestAnimationFrame(() => document.getElementById('home-title')?.focus({ preventScroll: true }));
+    }
+
+    function showLibraryHome(updateHistory = true) {
+        pauseVideoPlayback({ destroyStream: true });
+        elements.videoView.style.display = 'none';
+        closeNotesView({ restoreFocus: false });
+        elements.homeView.style.display = 'block';
+        clearActiveVideoLinks();
+        state.currentVideo = null;
+        renderHomeTiles(null, []);
+        window.scrollTo({ top: 0, behavior: preferredScrollBehavior() });
+        if (updateHistory) setHomeRoute();
+        focusHomeHeading();
+    }
+
+    function restoreRoute() {
+        const params = new URLSearchParams(location.hash.replace(/^#/, ''));
+        const videoPath = params.get('video');
+        if (!videoPath) {
+            if (state.currentVideo) showLibraryHome(false);
+            return;
+        }
+
+        const videoObj = resolveVideoObj(videoPath);
+        if (videoObj) {
+            if (!state.currentVideo || state.currentVideo.path !== videoPath) loadVideo(videoObj, { updateHistory: false });
+        } else {
+            showToast('That shared lesson is no longer in this library.', 5000, true);
+            setHomeRoute(true);
+        }
+    }
+
     // Render Sidebar Navigation
+    let navItemId = 0;
     function renderNavigation() {
+        navItemId = 0;
         elements.nav.innerHTML = '';
         // Render root level as standard folders instead of unclickable headers
         renderFolderLevel(state.tree, elements.nav, 0);
+    }
+
+    function clearActiveVideoLinks() {
+        document.querySelectorAll('.video-link').forEach(link => {
+            link.classList.remove('active');
+            link.querySelector('.video-link-main')?.removeAttribute('aria-current');
+        });
     }
 
     function renderFolderLevel(foldersObj, containerElement, depth, currentPath = []) {
@@ -258,23 +658,24 @@ document.addEventListener('DOMContentLoaded', () => {
             headerBtn.style.cursor = 'pointer';
             headerBtn.title = "Expand/Collapse Folder";
             headerBtn.innerHTML = `
-                <div style="display:flex; align-items:center; flex-grow:1;">
+                <button type="button" class="nav-folder-toggle">
                     ${iconSvg}
                     <span style="word-break: break-word; line-height: 1.3; font-size: 0.95em; padding-right: 8px;">${folderName}</span>
-                </div>
-                <div style="display:flex; align-items:center; gap:4px;">
-                    <div class="open-tiles-btn" style="padding: 4px; display:flex; align-items:center; border-radius: 4px; transition: background-color 0.2s;" title="Open in Tile View">
-                        ${gridIconSvg}
-                    </div>
-                    <div style="padding: 4px; display:flex; align-items:center;">
-                        <svg class="chevron" viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M9 18l6-6-6-6"/></svg>
-                    </div>
-                </div>
+                    <svg class="chevron" viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>
+                </button>
+                <button type="button" class="open-tiles-btn" title="Open in tile view" aria-label="Open ${folderName} in tile view">
+                    ${gridIconSvg}
+                </button>
             `;
 
             const contentDiv = document.createElement('div');
             contentDiv.className = 'nav-content';
             contentDiv.style.setProperty('--depth', depth);
+            contentDiv.id = `nav-content-${++navItemId}`;
+            const folderToggle = headerBtn.querySelector('.nav-folder-toggle');
+            folderToggle.setAttribute('aria-controls', contentDiv.id);
+            folderToggle.setAttribute('aria-expanded', 'false');
+            folderToggle.setAttribute('aria-label', `Expand or collapse ${folderName}`);
             
             const fullPath = [...currentPath, folderName];
             
@@ -287,17 +688,25 @@ document.addEventListener('DOMContentLoaded', () => {
             if (node.videos.length > 0) {
                 node.videos.sort(compareVideos);
                 node.videos.forEach(video => {
-                    const link = document.createElement('a');
+                    const link = document.createElement('div');
                     link.className = `video-link ${state.watched.has(video.path) ? 'watched' : ''}`;
                     link.style.setProperty('--depth', depth); link.style.paddingLeft = `calc(32px + (var(--depth) * 10px))`;
+
+                    const mainButton = document.createElement('button');
+                    mainButton.type = 'button';
+                    mainButton.className = 'video-link-main';
+                    mainButton.setAttribute('aria-label', `Play ${video.title}`);
 
                     const titleSpan = document.createElement('span');
                     titleSpan.className = 'video-link-title';
                     titleSpan.textContent = video.title;
 
-                    const starBtn = document.createElement('span');
+                    const starBtn = document.createElement('button');
+                    starBtn.type = 'button';
                     starBtn.className = 'sidebar-fav-star';
                     starBtn.title = state.favorites.has(video.path) ? 'Unfavorite' : 'Favorite';
+                    starBtn.setAttribute('aria-label', starBtn.title + ' ' + video.title);
+                    starBtn.setAttribute('aria-pressed', String(state.favorites.has(video.path)));
                     starBtn.innerHTML = state.favorites.has(video.path) ? '&#9733;' : '&#9734;';
                     if (state.favorites.has(video.path)) starBtn.classList.add('active');
                     starBtn.addEventListener('click', (e) => {
@@ -308,35 +717,41 @@ document.addEventListener('DOMContentLoaded', () => {
                             starBtn.innerHTML = '&#9734;';
                             starBtn.classList.remove('active');
                             starBtn.title = 'Favorite';
+                            starBtn.setAttribute('aria-pressed', 'false');
                         } else {
                             state.favorites.add(video.path);
                             starBtn.innerHTML = '&#9733;';
                             starBtn.classList.add('active');
                             starBtn.title = 'Unfavorite';
+                            starBtn.setAttribute('aria-pressed', 'true');
                         }
+                        starBtn.setAttribute('aria-label', starBtn.title + ' ' + video.title);
                         safeStore('favoriteVideos', JSON.stringify([...state.favorites]));
                         updateNotesBadge();
                         // Update fav button if this is the current video
                         if (state.currentVideo && state.currentVideo.path === video.path) updateFavBtn();
                     });
 
-                    link.appendChild(titleSpan);
+                    mainButton.appendChild(titleSpan);
+                    link.appendChild(mainButton);
                     link.appendChild(starBtn);
                     link.dataset.path = video.path;
-                    link.addEventListener('click', () => loadVideo(video));
+                    mainButton.addEventListener('click', () => loadVideo(video));
                     contentDiv.appendChild(link);
                 });
             }
 
             // Expand/Collapse entire row
-            headerBtn.addEventListener('click', (e) => {
+            folderToggle.addEventListener('click', () => {
                 const isOpen = contentDiv.classList.contains('open');
                 if (!isOpen) {
                     contentDiv.classList.add('open');
                     headerBtn.classList.add('active');
+                    folderToggle.setAttribute('aria-expanded', 'true');
                 } else {
                     contentDiv.classList.remove('open');
                     headerBtn.classList.remove('active');
+                    folderToggle.setAttribute('aria-expanded', 'false');
                 }
             });
 
@@ -354,21 +769,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 // Switch View
                 elements.videoView.style.display = 'none';
-                closeNotesView();
+                closeNotesView({ restoreFocus: false });
                 elements.homeView.style.display = 'block';
-                document.querySelectorAll('.video-link').forEach(l => l.classList.remove('active'));
+                clearActiveVideoLinks();
                 state.currentVideo = null;
                 
                 // Render Tiles for this specific folder!
                 renderHomeTiles(node, fullPath);
-                window.scrollTo({ top: 0, behavior: 'smooth' });
+                setHomeRoute();
+                focusHomeHeading();
+                window.scrollTo({ top: 0, behavior: preferredScrollBehavior() });
                 
                 // Intentionally NOT auto-expanding accordion as per user preference
                 
                 // On mobile, close sidebar after jumping
                 if (window.innerWidth <= 768) {
-                    elements.sidebar.classList.remove('open');
-                    document.body.classList.remove('sidebar-open');
+                    setSidebarOpen(false, { restoreFocus: false });
                 }
             });
 
@@ -403,7 +819,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (Array.isArray(arr)) total += arr.length;
         }
 
-        const lastSeen = parseInt(localStorage.getItem('notesBadgeSeen') || '0', 10);
+        const lastSeen = parseInt(safeGet('notesBadgeSeen', '0'), 10);
         const unseen = Math.max(0, total - lastSeen);
 
         const targets = [
@@ -426,6 +842,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 badge.remove();
             }
         }
+        updateHomeStats();
     }
 
     function markNotesSeen() {
@@ -442,6 +859,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Render Home Tiles as a File Explorer
     function renderHomeTiles(folderNode = null, path = []) {
+        updateHomeStats();
         // If null, we are at the root
         if (!folderNode) {
             folderNode = { subfolders: state.tree, videos: [] };
@@ -451,7 +869,7 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.courseGrid.innerHTML = '';
 
         // Render Breadcrumbs for Home View
-        const homeHeader = document.querySelector('.home-title');
+        const homeHeader = document.getElementById('home-breadcrumbs');
         let breadcrumbHtml = `<a href="#" class="home-crumb" data-level="-1" style="color:var(--accent); text-decoration:none;">Library Home</a>`;
         
         path.forEach((p, idx) => {
@@ -484,6 +902,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                     renderHomeTiles(targetNode, path.slice(0, level + 1));
                 }
+                focusHomeHeading();
             });
         });
 
@@ -535,11 +954,14 @@ document.addEventListener('DOMContentLoaded', () => {
             wrapper.className = 'home-section-wrapper' + (collapsed ? ' collapsed' : '');
             wrapper.dataset.sectionId = id;
 
-            const header = document.createElement('div');
+            const header = document.createElement('button');
+            header.type = 'button';
             header.className = 'favorites-section-header collapsible-header';
+            header.setAttribute('aria-expanded', String(!collapsed));
             header.innerHTML = `<span>${icon} ${label}</span><span class="section-toggle-arrow">${collapsed ? '&#9654;' : '&#9660;'}</span>`;
             header.addEventListener('click', () => {
                 const isCollapsed = wrapper.classList.toggle('collapsed');
+                header.setAttribute('aria-expanded', String(!isCollapsed));
                 header.querySelector('.section-toggle-arrow').innerHTML = isCollapsed ? '&#9654;' : '&#9660;';
                 const saved = safeLoad('collapsedSections', {});
                 saved[id] = isCollapsed;
@@ -548,6 +970,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const content = document.createElement('div');
             content.className = 'home-section-content';
+            content.id = `home-section-${id}`;
+            header.setAttribute('aria-controls', content.id);
             content.style.display = collapsed ? 'none' : 'contents';
 
             header.addEventListener('click', () => {
@@ -571,7 +995,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 favIndex++;
                 const parts = favPath.split('/');
                 const filename = parts.pop();
-                const title = filename.replace(/\.(mp4|mov)$/i, "");
+                const title = titleFromFilename(filename);
                 const videoObj = { title, path: favPath, ...info };
                 const isRemoved = tilePendingUnfavs.has(favPath);
 
@@ -587,19 +1011,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 tile.style.borderLeft = `3px solid ${styleColors[favStyle] || styleColors['Other']}`;
                 tile.innerHTML = `
-                    <div style="display: flex; align-items: flex-start; margin-bottom: 2px;">
-                        <svg viewBox="0 0 24 24" width="20" height="20" stroke="var(--accent)" stroke-width="2" fill="${isRemoved ? 'none' : 'var(--accent)'}" stroke-linecap="round" stroke-linejoin="round" style="margin-right:10px; min-width:20px; margin-top: 2px;"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
-                        <h3 class="video-tile-title" style="margin-bottom: 0; color: var(--text-main); font-weight: normal; line-height: 1.4;">${title}</h3>
-                        <button class="tile-fav-toggle" data-path="${favPath}" title="${isRemoved ? 'Re-favorite' : 'Unfavorite'}">${isRemoved ? 'Re-favorite' : 'Unfavorite'}</button>
+                    <div class="tile-action-row">
+                        <button type="button" class="tile-main-btn" aria-label="Play ${title}" ${isRemoved ? 'disabled' : ''}>
+                            <svg viewBox="0 0 24 24" width="20" height="20" stroke="var(--accent)" stroke-width="2" fill="${isRemoved ? 'none' : 'var(--accent)'}" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+                            <span class="video-tile-title">${title}</span>
+                        </button>
+                        <button type="button" class="tile-fav-toggle" data-path="${favPath}" title="${isRemoved ? 'Re-favorite' : 'Unfavorite'}">${isRemoved ? 'Re-favorite' : 'Unfavorite'}</button>
                     </div>
                     <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: auto; opacity: 0.7;">${parts.join(' / ')}</p>
                 `;
-                // Click tile body → load video (but not if clicking the toggle button)
-                tile.addEventListener('click', (e) => {
-                    if (e.target.closest('.tile-fav-toggle')) return;
-                    if (isRemoved) return;
-                    loadVideo(videoObj);
-                });
+                tile.querySelector('.tile-main-btn').addEventListener('click', () => loadVideo(videoObj));
                 // Toggle button
                 tile.querySelector('.tile-fav-toggle').addEventListener('click', (e) => {
                     e.stopPropagation();
@@ -641,7 +1062,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const info = videoData[entry.path];
                     const parts = entry.path.split('/');
                     const filename = parts.pop();
-                    const title = filename.replace(/\.(mp4|mov)$/i, '');
+            const title = titleFromFilename(filename);
                     const videoObj = { title, path: entry.path, ...info };
 
                     const tile = document.createElement('div');
@@ -660,6 +1081,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <p style="font-size: 0.7rem; color: var(--text-muted); margin-top: 4px; opacity: 0.7;">${parts.join(' / ')}</p>
                     `;
                     tile.addEventListener('click', () => loadVideo(videoObj));
+                    makeKeyboardAccessible(tile, () => loadVideo(videoObj), `Resume ${title} from ${formatTime(entry.time)}`);
                     cwContent.appendChild(tile);
                     tileIndex++;
                 }
@@ -682,7 +1104,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (withNotes.length > 0) {
                     const parts = vPath.split('/');
                     const filename = parts.pop();
-                    const title = filename.replace(/\.(mp4|mov)$/i, '');
+            const title = titleFromFilename(filename);
                     notedVideos.push({ path: vPath, title, folder: parts.join(' / '), notes: withNotes });
                 }
             }
@@ -701,13 +1123,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     card.style.backgroundColor = 'var(--bg-base)';
 
                     // Video title header (clickable → load video)
-                    let notesHtml = `<div class="recent-notes-video-title" data-path="${nv.path}">${nv.title}</div>`;
+                    let notesHtml = `<div class="recent-notes-video-title" data-path="${nv.path}" role="button" tabindex="0">${nv.title}</div>`;
                     notesHtml += `<div style="font-size: 0.7rem; color: var(--text-muted); opacity: 0.6; margin-bottom: 8px;">${nv.folder}</div>`;
 
                     // Individual notes (clickable → seek to timestamp)
                     for (const note of nv.notes) {
                         const escapedNote = (note.n || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                        notesHtml += `<div class="recent-note-entry" data-path="${nv.path}" data-time="${note.t}">
+                        notesHtml += `<div class="recent-note-entry" data-path="${nv.path}" data-time="${note.t}" role="button" tabindex="0">
                             <span style="color: var(--accent); font-size: 0.7rem; flex-shrink: 0;">${formatTime(note.t)}</span>
                             <span style="font-size: 0.8rem; color: var(--text-main);">"${escapedNote}"</span>
                         </div>`;
@@ -720,13 +1142,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         const noteEntry = e.target.closest('.recent-note-entry');
                         if (noteEntry) {
                             const seekTime = parseFloat(noteEntry.dataset.time);
-                            skipNextResume = true;
-                            loadVideo(videoObj);
-                            const onReady = () => {
-                                elements.videoPlayer.currentTime = seekTime;
-                                elements.videoPlayer.removeEventListener('loadedmetadata', onReady);
-                            };
-                            elements.videoPlayer.addEventListener('loadedmetadata', onReady);
+                            loadVideo(videoObj, { seekTime });
                             return;
                         }
                         const titleEl = e.target.closest('.recent-notes-video-title');
@@ -734,6 +1150,13 @@ document.addEventListener('DOMContentLoaded', () => {
                             loadVideo(videoObj);
                             return;
                         }
+                    });
+                    card.addEventListener('keydown', event => {
+                        if (event.key !== 'Enter' && event.key !== ' ') return;
+                        const target = event.target.closest('.recent-note-entry, .recent-notes-video-title');
+                        if (!target || !card.contains(target)) return;
+                        event.preventDefault();
+                        target.click();
                     });
 
                     notesContent.appendChild(card);
@@ -792,16 +1215,18 @@ document.addEventListener('DOMContentLoaded', () => {
             `;
             tile.addEventListener('click', () => {
                 renderHomeTiles(node, [...path, fName]);
+                focusHomeHeading();
                 
                 // Keep sidebar in sync - open the accordion for this folder
                 const headers = Array.from(document.querySelectorAll('.nav-header span'));
                 const targetHeader = headers.find(span => span.innerText === fName);
                 if (targetHeader) {
                     const btn = targetHeader.closest('.nav-header');
-                    if (!btn.classList.contains('active')) btn.click();
-                    btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    if (!btn.classList.contains('active')) btn.querySelector('.nav-folder-toggle')?.click();
+                    btn.scrollIntoView({ behavior: preferredScrollBehavior(), block: 'center' });
                 }
             });
+            makeKeyboardAccessible(tile, () => tile.click(), `Open ${fName}, ${numVideos} lessons`);
             elements.courseGrid.appendChild(tile);
         }
         
@@ -824,19 +1249,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 const watchedAt = state.lastWatched[video.path];
                 const watchedAgo = watchedAt ? timeAgo(watchedAt) : '';
                 tile.innerHTML = `
-                    <div style="display: flex; align-items: flex-start; margin-bottom: 2px;">
-                        <svg viewBox="0 0 24 24" width="20" height="20" stroke="var(--text-muted)" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="margin-right:10px; min-width:20px; margin-top: 2px;"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-                        <h3 class="video-tile-title" style="margin-bottom: 0; color: var(--text-main); font-weight: normal; line-height: 1.4;">${video.title}</h3>
-                        <button class="tile-star-btn${isFav ? ' tile-star-active' : ''}" data-path="${video.path}" title="${isFav ? 'Remove from favorites' : 'Add to favorites'}">
+                    <div class="tile-action-row">
+                        <button type="button" class="tile-main-btn" aria-label="Play ${video.title}">
+                            <svg viewBox="0 0 24 24" width="20" height="20" stroke="var(--text-muted)" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                            <span class="video-tile-title">${video.title}</span>
+                        </button>
+                        <button type="button" class="tile-star-btn${isFav ? ' tile-star-active' : ''}" data-path="${video.path}" title="${isFav ? 'Remove from favorites' : 'Add to favorites'}" aria-label="${isFav ? 'Remove from favorites' : 'Add to favorites'}: ${video.title}" aria-pressed="${isFav}">
                             <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="${isFav ? 'currentColor' : 'none'}" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
                         </button>
                     </div>
                     ${watchedAgo ? '<p class="tile-watched-ago">' + watchedAgo + '</p>' : ''}
                 `;
-                tile.addEventListener('click', (e) => {
-                    if (e.target.closest('.tile-star-btn')) return;
-                    loadVideo(video);
-                });
+                tile.querySelector('.tile-main-btn').addEventListener('click', () => loadVideo(video));
                 tile.querySelector('.tile-star-btn').addEventListener('click', (e) => {
                     e.stopPropagation();
                     if (state.favorites.has(video.path)) {
@@ -854,10 +1278,20 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Load and Play Video
-    function loadVideo(videoObj) {
+    function loadVideo(videoObj, options = {}) {
+        if (pendingSeekCleanup) {
+            pendingSeekCleanup();
+            pendingSeekCleanup = null;
+            skipNextResume = false;
+        }
         tilePendingUnfavs = new Set();
         clearABLoop();
         state.currentVideo = videoObj;
+        const requestedSeek = Number(options.seekTime);
+        if (Number.isFinite(requestedSeek) && requestedSeek >= 0) {
+            skipNextResume = true;
+            preparePendingSeek(videoObj.path, requestedSeek);
+        }
         
         // Find playlist siblings for Prev/Next
         const pathParts = videoObj.path.split('/');
@@ -899,7 +1333,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (elements.nextOverlayBtn) elements.nextOverlayBtn.disabled = true;
         }
         elements.homeView.style.display = 'none';
-        closeNotesView();
+        closeNotesView({ restoreFocus: false });
         elements.videoView.style.display = 'flex';
 
         // Update URL/Video Source
@@ -982,11 +1416,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 // Switch Views
                 elements.videoView.style.display = 'none';
-                closeNotesView();
+                closeNotesView({ restoreFocus: false });
                 elements.homeView.style.display = 'block';
                 
                 // Uncheck active states in sidebar
-                document.querySelectorAll('.video-link').forEach(l => l.classList.remove('active'));
+                clearActiveVideoLinks();
                 state.currentVideo = null;
                 
                 // Render the Home Tiles based on the breadcrumb clicked
@@ -1007,8 +1441,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     // Render that specific folder in the tiles view
                     renderHomeTiles(targetNode, [styleName, ...pathData]);
                 }
+                focusHomeHeading();
+                setHomeRoute();
                 
-                window.scrollTo({ top: 0, behavior: 'smooth' });
+                window.scrollTo({ top: 0, behavior: preferredScrollBehavior() });
             });
             
             link.addEventListener('mouseover', e => e.target.style.color = 'var(--accent)');
@@ -1016,9 +1452,12 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         // Highlight Active Link
-        document.querySelectorAll('.video-link').forEach(l => l.classList.remove('active'));
+        clearActiveVideoLinks();
         const activeLink = document.querySelector(`.video-link[data-path="${CSS.escape(videoObj.path)}"]`);
-        if (activeLink) activeLink.classList.add('active');
+        if (activeLink) {
+            activeLink.classList.add('active');
+            activeLink.querySelector('.video-link-main')?.setAttribute('aria-current', 'page');
+        }
 
         // Mark as watched
         state.watched.add(videoObj.path);
@@ -1028,14 +1467,16 @@ document.addEventListener('DOMContentLoaded', () => {
         // Track last watched timestamp
         state.lastWatched[videoObj.path] = Date.now();
         safeStore('videoLastWatched', JSON.stringify(state.lastWatched));
+        updateHomeStats();
+        if (options.updateHistory !== false) setVideoRoute(videoObj.path);
 
         // Scroll to top
-        elements.videoView.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        elements.videoView.scrollIntoView({ behavior: preferredScrollBehavior(), block: 'start' });
+        requestAnimationFrame(() => elements.videoTitle.focus({ preventScroll: true }));
 
         // Mobile: close sidebar
         if (window.innerWidth <= 768) {
-            elements.sidebar.classList.remove('open');
-            document.body.classList.remove('sidebar-open');
+            setSidebarOpen(false, { restoreFocus: false });
         }
     }
 
@@ -1060,7 +1501,7 @@ document.addEventListener('DOMContentLoaded', () => {
             video.play().catch(e => console.log("Autoplay prevented:", e));
         }
         
-        const useCDN = state.useBunny || checkIsMobile();
+        const useCDN = !canUseLocalMedia || state.useBunny;
         if (useCDN && state.currentVideo.bunny_id && state.bunnyPullZone) {
             // Clean pull zone hostname (remove https:// or trailing slashes if user pasted them)
             let host = state.bunnyPullZone.replace('https://', '').replace('http://', '').split('/')[0];
@@ -1077,8 +1518,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (data.fatal) {
                         hls.destroy();
                         hls = null;
-                        showToast('Stream error — using local file path', 5000);
-                        playLocalFile();
+                        if (canUseLocalMedia) {
+                            showToast('Stream error — trying the local file.', 5000, true);
+                            playLocalFile();
+                        } else {
+                            showToast('This lesson stream is unavailable. Check your connection and try again.', 6000, true);
+                        }
                     }
                 });
             } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
@@ -1088,8 +1533,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     video.play().catch(e => console.log("Autoplay prevented:", e));
                 }, { once: true });
             } else {
-                showToast('Stream playback is unavailable here — using local file path', 5000);
-                playLocalFile();
+                if (canUseLocalMedia) {
+                    showToast('Streaming is unavailable — trying the local file.', 5000, true);
+                    playLocalFile();
+                } else {
+                    showToast('Streaming is not supported in this browser.', 6000, true);
+                }
             }
         } else {
             playLocalFile();
@@ -1098,6 +1547,31 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Resume playback position after source loads
     let skipNextResume = false;
+    let pendingSeekCleanup = null;
+
+    function preparePendingSeek(expectedPath, seekTime) {
+        const video = elements.videoPlayer;
+        const cleanup = () => {
+            video.removeEventListener('loadedmetadata', onReady);
+            video.removeEventListener('error', onError);
+            if (pendingSeekCleanup === cleanup) pendingSeekCleanup = null;
+        };
+        const onReady = () => {
+            if (!state.currentVideo || state.currentVideo.path !== expectedPath) {
+                cleanup();
+                return;
+            }
+            video.currentTime = Math.min(seekTime, Number.isFinite(video.duration) ? video.duration : seekTime);
+            cleanup();
+        };
+        const onError = () => {
+            skipNextResume = false;
+            cleanup();
+        };
+        video.addEventListener('loadedmetadata', onReady);
+        video.addEventListener('error', onError);
+        pendingSeekCleanup = cleanup;
+    }
     function tryResumePosition() {
         if (skipNextResume) { skipNextResume = false; return; }
         if (!state.currentVideo) return;
@@ -1109,6 +1583,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Show toast
             const toast = document.createElement('div');
             toast.className = 'resume-toast';
+            toast.setAttribute('role', 'status');
             toast.textContent = 'Resumed from ' + formatTime(saved);
             elements.playerContainer.appendChild(toast);
             setTimeout(() => toast.remove(), 2600);
@@ -1147,9 +1622,9 @@ document.addEventListener('DOMContentLoaded', () => {
     function clearWatchHistoryData() {
         state.watched.clear();
         state.lastWatched = {};
-        localStorage.removeItem('watchedVideos');
-        localStorage.removeItem('videoLastWatched');
-        localStorage.removeItem('videoPositions');
+        safeRemove('watchedVideos');
+        safeRemove('videoLastWatched');
+        safeRemove('videoPositions');
         renderNavigation();
         if (elements.homeView && elements.homeView.style.display !== 'none') renderHomeTiles(null, []);
     }
@@ -1164,9 +1639,10 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Reusable toast notification
-    function showToast(msg, duration = 3000) {
+    function showToast(msg, duration = 3000, isError = false) {
         const toast = document.createElement('div');
         toast.className = 'resume-toast';
+        toast.setAttribute('role', isError ? 'alert' : 'status');
         toast.textContent = msg;
         (elements.playerContainer || document.body).appendChild(toast);
         setTimeout(() => toast.remove(), duration);
@@ -1179,7 +1655,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const msg = err.code === 4 ? 'Video not found — try switching source'
                   : err.code === 3 ? 'Video decode error — try a different browser'
                   : 'Video failed to load';
-        showToast(msg, 5000);
+        showToast(msg, 5000, true);
     });
 
     // Parse Markdown & Add Clickable Timestamps
@@ -1193,7 +1669,7 @@ document.addEventListener('DOMContentLoaded', () => {
             .replace(/\[(\d{2}:\d{2})\]/g, (match, timeStr) => {
                 const parts = timeStr.split(':');
                 const totalSeconds = parseInt(parts[0]) * 60 + parseInt(parts[1]);
-                return `<span class="timestamp-pill" data-time="${totalSeconds}">${match}</span>`;
+                return `<button type="button" class="timestamp-pill" data-time="${totalSeconds}" aria-label="Jump to ${timeStr}">${match}</button>`;
             });
 
         // Split by dashes for bullet points
@@ -1213,6 +1689,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Event Listeners
     function setupEventListeners() {
+        const hlsRuntime = document.getElementById('hls-runtime');
+        if (hlsRuntime) {
+            hlsRuntime.addEventListener('load', () => {
+                if (state.currentVideo && typeof Hls !== 'undefined' && !hls && !elements.videoPlayer.currentSrc) {
+                    updateVideoSource();
+                }
+            });
+        }
+
         // Prev/Next Video Navigation
         elements.prevBtn.addEventListener('click', () => {
             if (state.playlist && state.playlistIndex > 0) {
@@ -1241,14 +1726,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         // Go Home helper
         function goHome() {
-            elements.videoView.style.display = 'none';
-            closeNotesView();
-            elements.homeView.style.display = 'block';
-            pauseVideoPlayback({ destroyStream: true });
-            document.querySelectorAll('.video-link').forEach(l => l.classList.remove('active'));
-            state.currentVideo = null;
-            renderHomeTiles(null, []);
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+            showLibraryHome(true);
         }
 
         // Home Breadcrumb
@@ -1263,10 +1741,10 @@ document.addEventListener('DOMContentLoaded', () => {
             el.addEventListener('click', () => {
                 goHome();
                 if (window.innerWidth <= 768) {
-                    elements.sidebar.classList.remove('open');
-                    document.body.classList.remove('sidebar-open');
+                    setSidebarOpen(false, { restoreFocus: false });
                 }
             });
+            makeKeyboardAccessible(el, () => el.click(), 'Go to library home');
         });
 
         // Home button in sidebar header
@@ -1275,8 +1753,7 @@ document.addEventListener('DOMContentLoaded', () => {
             homeSidebarBtn.addEventListener('click', () => {
                 goHome();
                 if (window.innerWidth <= 768) {
-                    elements.sidebar.classList.remove('open');
-                    document.body.classList.remove('sidebar-open');
+                    setSidebarOpen(false, { restoreFocus: false });
                 }
             });
         }
@@ -1293,34 +1770,78 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Scroll up centered towards the video player
                 const wrapper = document.getElementById('video-sticky-wrapper');
                 if (wrapper) {
-                    wrapper.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    wrapper.scrollIntoView({ behavior: preferredScrollBehavior(), block: 'center' });
                 }
             }
         });
 
         
-        // Mobile-friendly dropdown toggle
-        elements.currentSpeedBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const dropdown = document.getElementById('speed-dropdown');
-            const isVisible = dropdown.style.display === 'flex';
-            dropdown.style.display = isVisible ? 'none' : 'flex';
+        // Playback-speed menu, including the full keyboard menu pattern.
+        const speedDropdown = document.getElementById('speed-dropdown');
+        const speedMenuItems = [...elements.speedDropdownBtns];
+        const closeSpeedMenu = (returnFocus = false) => {
+            speedDropdown.style.display = 'none';
+            elements.currentSpeedBtn.setAttribute('aria-expanded', 'false');
+            if (returnFocus) elements.currentSpeedBtn.focus();
+        };
+        const openSpeedMenu = (focusItem = true) => {
+            speedDropdown.style.display = 'flex';
+            elements.currentSpeedBtn.setAttribute('aria-expanded', 'true');
+            if (focusItem) {
+                const active = speedMenuItems.find(item => item.getAttribute('aria-checked') === 'true') || speedMenuItems[0];
+                requestAnimationFrame(() => active?.focus());
+            }
+        };
+        const focusSpeedItem = (current, direction) => {
+            const index = speedMenuItems.indexOf(current);
+            const next = (index + direction + speedMenuItems.length) % speedMenuItems.length;
+            speedMenuItems[next]?.focus();
+        };
+
+        elements.currentSpeedBtn.addEventListener('click', (event) => {
+            event.stopPropagation();
+            if (elements.currentSpeedBtn.getAttribute('aria-expanded') === 'true') closeSpeedMenu();
+            else openSpeedMenu();
         });
-        
-        // Close dropdown when clicking outside
-        document.addEventListener('click', (e) => {
-            const dropdown = document.getElementById('speed-dropdown');
-            if (dropdown && e.target !== elements.currentSpeedBtn && !dropdown.contains(e.target)) {
-                dropdown.style.display = '';
+        elements.currentSpeedBtn.addEventListener('keydown', event => {
+            if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                event.preventDefault();
+                openSpeedMenu();
+            } else if (event.key === 'Escape') {
+                event.stopPropagation();
+                closeSpeedMenu();
             }
         });
-        
-        // In-Player Speed Overlay Controls
-        elements.speedDropdownBtns.forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const speed = parseFloat(e.target.dataset.speed);
-                setSpeed(speed);
-                document.getElementById('speed-dropdown').style.display = 'none';
+
+        document.addEventListener('click', (event) => {
+            if (event.target !== elements.currentSpeedBtn && !speedDropdown.contains(event.target)) closeSpeedMenu();
+        });
+
+        speedMenuItems.forEach(btn => {
+            btn.addEventListener('click', (event) => {
+                setSpeed(parseFloat(event.currentTarget.dataset.speed));
+                closeSpeedMenu(true);
+            });
+            btn.addEventListener('keydown', event => {
+                if (event.key === 'ArrowDown') {
+                    event.preventDefault();
+                    focusSpeedItem(event.currentTarget, 1);
+                } else if (event.key === 'ArrowUp') {
+                    event.preventDefault();
+                    focusSpeedItem(event.currentTarget, -1);
+                } else if (event.key === 'Home') {
+                    event.preventDefault();
+                    speedMenuItems[0]?.focus();
+                } else if (event.key === 'End') {
+                    event.preventDefault();
+                    speedMenuItems[speedMenuItems.length - 1]?.focus();
+                } else if (event.key === 'Escape') {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    closeSpeedMenu(true);
+                } else if (event.key === 'Tab') {
+                    closeSpeedMenu();
+                }
             });
         });
 
@@ -1365,34 +1886,26 @@ document.addEventListener('DOMContentLoaded', () => {
                 const headerBtn = group.querySelector('.nav-header');
                 if (query.length > 0 && hasVisibleMatch) {
                     if (content) content.classList.add('open');
-                    if (headerBtn) headerBtn.classList.add('active');
+                    if (headerBtn) {
+                        headerBtn.classList.add('active');
+                        headerBtn.querySelector('.nav-folder-toggle')?.setAttribute('aria-expanded', 'true');
+                    }
                 } else if (query.length === 0) {
                     if (content) content.classList.remove('open');
-                    if (headerBtn) headerBtn.classList.remove('active');
+                    if (headerBtn) {
+                        headerBtn.classList.remove('active');
+                        headerBtn.querySelector('.nav-folder-toggle')?.setAttribute('aria-expanded', 'false');
+                    }
                 }
             });
         }
 
         // Mobile Menu / Desktop Toggle
-        const toggleSidebar = () => {
-            if (window.innerWidth <= 768) {
-                elements.sidebar.classList.toggle('open');
-                document.body.classList.toggle('sidebar-open', elements.sidebar.classList.contains('open'));
-            } else {
-                document.body.classList.toggle('sidebar-closed');
-            }
-        };
+        const toggleSidebar = () => setSidebarOpen(!sidebarIsOpen());
 
         if(elements.menuToggle) elements.menuToggle.addEventListener('click', toggleSidebar);
         if(elements.openSidebarBtn) elements.openSidebarBtn.addEventListener('click', toggleSidebar);
-        if(elements.closeSidebarBtn) elements.closeSidebarBtn.addEventListener('click', () => {
-            if (window.innerWidth <= 768) {
-                elements.sidebar.classList.remove('open');
-                document.body.classList.remove('sidebar-open');
-            } else {
-                document.body.classList.add('sidebar-closed');
-            }
-        });
+        if(elements.closeSidebarBtn) elements.closeSidebarBtn.addEventListener('click', () => setSidebarOpen(false));
         
         // Close sidebar when clicking outside on mobile
         document.addEventListener('click', (e) => {
@@ -1401,17 +1914,20 @@ document.addEventListener('DOMContentLoaded', () => {
                     !elements.sidebar.contains(e.target) && 
                     (elements.menuToggle && !elements.menuToggle.contains(e.target)) &&
                     (elements.openSidebarBtn && !elements.openSidebarBtn.contains(e.target))) {
-                    elements.sidebar.classList.remove('open');
-                    document.body.classList.remove('sidebar-open');
+                    setSidebarOpen(false);
                 }
             }
         });
+        window.addEventListener('resize', () => syncSidebarAccessibility());
 
         // Collapse All Folders
         if (elements.collapseAllBtn) {
             elements.collapseAllBtn.addEventListener('click', () => {
                 document.querySelectorAll('.nav-content.open').forEach(el => el.classList.remove('open'));
-                document.querySelectorAll('.nav-header.active').forEach(el => el.classList.remove('active'));
+                document.querySelectorAll('.nav-header.active').forEach(el => {
+                    el.classList.remove('active');
+                    el.querySelector('.nav-folder-toggle')?.setAttribute('aria-expanded', 'false');
+                });
             });
         }
         
@@ -1509,7 +2025,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 const opt = [...elements.themeSelect.options].find(o => o.value === tv);
                 const label = opt ? opt.textContent : tv;
                 const isCurrent = state.theme === tv;
-                html += `<span class="fav-theme-chip ${isCurrent ? 'current' : ''}" data-theme="${tv}">${label}<span class="fav-theme-remove" data-theme="${tv}" title="Remove">&times;</span></span>`;
+                html += `<div class="fav-theme-chip ${isCurrent ? 'current' : ''}" role="group" aria-label="${label} theme">
+                    <button type="button" class="fav-theme-apply" data-theme="${tv}" aria-pressed="${isCurrent}">${label}</button>
+                    <button type="button" class="fav-theme-remove" data-theme="${tv}" aria-label="Remove ${label} from favorite themes">&times;</button>
+                </div>`;
             }
             favThemesRow.innerHTML = html;
         }
@@ -1519,6 +2038,8 @@ document.addEventListener('DOMContentLoaded', () => {
             themeFavBtn.innerHTML = isFav ? '&#9733;' : '&#9734;';
             themeFavBtn.classList.toggle('active', isFav);
             themeFavBtn.title = isFav ? 'Unfavorite this theme' : 'Favorite this theme';
+            themeFavBtn.setAttribute('aria-label', themeFavBtn.title);
+            themeFavBtn.setAttribute('aria-pressed', String(isFav));
         }
 
         themeFavBtn.addEventListener('click', () => {
@@ -1544,9 +2065,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             // Click chip to apply theme
-            const chip = e.target.closest('.fav-theme-chip');
-            if (chip) {
-                const tv = chip.dataset.theme;
+            const applyButton = e.target.closest('.fav-theme-apply');
+            if (applyButton) {
+                const tv = applyButton.dataset.theme;
                 state.theme = tv;
                 applyTheme(tv);
                 elements.themeSelect.value = tv;
@@ -1572,7 +2093,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         document.getElementById('reset-bookmarks').addEventListener('click', () => {
             confirmAndReset('Clear all bookmarks and notes for every video?', () => {
-                localStorage.removeItem('videoBookmarks');
+                safeRemove('videoBookmarks');
                 if (state.currentVideo) renderBookmarks();
                 updateNotesBadge();
             });
@@ -1581,14 +2102,14 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('reset-favorites').addEventListener('click', () => {
             confirmAndReset('Clear all favorites?', () => {
                 state.favorites.clear();
-                localStorage.removeItem('favoriteVideos');
+                safeRemove('favoriteVideos');
                 updateNotesBadge();
             });
         });
 
         document.getElementById('reset-positions').addEventListener('click', () => {
             confirmAndReset('Clear all saved resume positions?', () => {
-                localStorage.removeItem('videoPositions');
+                safeRemove('videoPositions');
             });
         });
 
@@ -1596,12 +2117,12 @@ document.addEventListener('DOMContentLoaded', () => {
             confirmAndReset('Reset EVERYTHING? Watch history, bookmarks, notes, favorites, resume positions — all gone. This cannot be undone.', () => {
                 state.watched.clear();
                 state.favorites.clear();
-                localStorage.removeItem('watchedVideos');
-                localStorage.removeItem('videoBookmarks');
-                localStorage.removeItem('favoriteVideos');
-                localStorage.removeItem('videoPositions');
+                safeRemove('watchedVideos');
+                safeRemove('videoBookmarks');
+                safeRemove('favoriteVideos');
+                safeRemove('videoPositions');
                 state.lastWatched = {};
-                localStorage.removeItem('videoLastWatched');
+                safeRemove('videoLastWatched');
                 renderNavigation();
                 if (state.currentVideo) renderBookmarks();
                 updateNotesBadge();
@@ -1613,6 +2134,8 @@ document.addEventListener('DOMContentLoaded', () => {
         document.documentElement.setAttribute('data-theme', themeName);
         document.body.setAttribute('data-theme', themeName);
         safeStore('theme', themeName);
+        const themeColor = document.querySelector('meta[name="theme-color"]');
+        if (themeColor) themeColor.content = getComputedStyle(document.body).getPropertyValue('--bg-base').trim() || '#fdf6e3';
     }
 
     // ── Export / Import ───────────────────────────────────
@@ -1622,8 +2145,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const a = document.createElement('a');
         a.href = url;
         a.download = filename;
+        a.hidden = true;
+        document.body.appendChild(a);
         a.click();
-        URL.revokeObjectURL(url);
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
 
     const exportModal = document.getElementById('export-modal');
@@ -1719,7 +2245,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     data.summaries = summaries;
                 }
             }
-            data.theme = localStorage.getItem('theme') || 'solarized-light';
+            data.theme = safeGet('theme', 'solarized-light');
 
             downloadFile(`dance-library-${date}.json`, JSON.stringify(data, null, 2), 'application/json');
         } else {
@@ -1742,7 +2268,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     for (const fav of filtered) {
                         const parts = fav.split('/');
                         const filename = parts.pop();
-                        const title = filename.replace(/\.(mp4|mov)$/i, '');
+            const title = titleFromFilename(filename);
                         md += `- **${title}** — _${parts.join(' / ')}_\n`;
                     }
                     md += '\n';
@@ -1769,7 +2295,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                         const parts = videoPath.split('/');
                         const filename = parts.pop();
-                        const title = filename.replace(/\.(mp4|mov)$/i, '');
+            const title = titleFromFilename(filename);
 
                         md += `### ${title}\n`;
                         md += `_${parts.join(' / ')}_\n\n`;
@@ -1797,7 +2323,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     for (const videoPath of withSummaries) {
                         const parts = videoPath.split('/');
                         const filename = parts.pop();
-                        const title = filename.replace(/\.(mp4|mov)$/i, '');
+            const title = titleFromFilename(filename);
 
                         md += `### ${title}\n`;
                         md += `_${parts.join(' / ')}_\n\n`;
@@ -1814,7 +2340,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     md += '## Watch History\n\n';
                     for (const w of filtered) {
                         const parts = w.split('/');
-                        const title = parts.pop().replace(/\.(mp4|mov)$/i, '');
+                        const title = titleFromFilename(parts.pop());
                         const ago = state.lastWatched[w] ? ' — ' + timeAgo(state.lastWatched[w]) : '';
                         md += `- ${title}${ago}\n`;
                     }
@@ -1836,19 +2362,35 @@ document.addEventListener('DOMContentLoaded', () => {
         importFileInput.click();
     });
 
+    function validateBackupData(data) {
+        if (!isRecord(data)) throw new TypeError('Backup root must be an object.');
+        const recognized = ['watchedVideos', 'videoBookmarks', 'favoriteVideos', 'videoPositions', 'videoLastWatched'];
+        if (!recognized.some(key => data[key] !== undefined)) {
+            throw new TypeError('No recognizable Dance Library data was found.');
+        }
+
+        for (const key of recognized) {
+            if (data[key] === undefined) continue;
+            const validator = storageValidators[key];
+            if (validator && !validator(data[key])) throw new TypeError(`Invalid ${key} data.`);
+        }
+        if (data.theme !== undefined && typeof data.theme !== 'string') throw new TypeError('Invalid theme value.');
+        return data;
+    }
+
     importFileInput.addEventListener('change', (e) => {
         const file = e.target.files[0];
         if (!file) return;
+        if (file.size > 10 * 1024 * 1024) {
+            alert('This backup is too large to import safely.');
+            importFileInput.value = '';
+            return;
+        }
 
         const reader = new FileReader();
         reader.onload = (evt) => {
             try {
-                const data = JSON.parse(evt.target.result);
-
-                if (!data.watchedVideos && !data.videoBookmarks && !data.favoriteVideos) {
-                    alert('Invalid backup file — no recognizable data found.');
-                    return;
-                }
+                const data = validateBackupData(JSON.parse(evt.target.result));
 
                 if (!confirm('Import this backup? This will MERGE with your existing data (not replace it). Continue?')) return;
 
@@ -1926,6 +2468,8 @@ document.addEventListener('DOMContentLoaded', () => {
         btn.textContent = 'A';
         btn.className = 'overlay-btn';
         btn.title = 'A-B Loop: set start [ set end ] clear Esc';
+        btn.setAttribute('aria-pressed', 'false');
+        btn.setAttribute('aria-label', 'Set A-B loop start');
     }
 
     function setLoopA() {
@@ -1936,6 +2480,8 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.abLoopBtn.textContent = 'A ' + formatTime(video.currentTime);
         elements.abLoopBtn.className = 'overlay-btn loop-a-set';
         elements.abLoopBtn.title = 'A-B Loop: Click to set end point (B)';
+        elements.abLoopBtn.setAttribute('aria-pressed', 'false');
+        elements.abLoopBtn.setAttribute('aria-label', 'Set A-B loop end');
     }
 
     function setLoopB() {
@@ -1950,6 +2496,8 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.abLoopBtn.textContent = formatTime(a) + ' \u2192 ' + formatTime(b);
         elements.abLoopBtn.className = 'overlay-btn loop-active';
         elements.abLoopBtn.title = 'A-B Loop active. Click to clear.';
+        elements.abLoopBtn.setAttribute('aria-pressed', 'true');
+        elements.abLoopBtn.setAttribute('aria-label', 'Clear active A-B loop');
         video.currentTime = a;
         video.play().catch(() => {});
     }
@@ -2001,6 +2549,8 @@ document.addEventListener('DOMContentLoaded', () => {
         state.mirrored = !state.mirrored;
         elements.videoPlayer.classList.toggle('mirrored', state.mirrored);
         elements.mirrorBtn.classList.toggle('mirror-active', state.mirrored);
+        elements.mirrorBtn.setAttribute('aria-pressed', String(state.mirrored));
+        elements.mirrorBtn.setAttribute('aria-label', state.mirrored ? 'Turn off mirrored video' : 'Mirror video');
     });
 
     // ── Skip Controls ────────────────────────────────────
@@ -2059,10 +2609,11 @@ document.addEventListener('DOMContentLoaded', () => {
         bookmarks.forEach((bk, idx) => {
             const pill = document.createElement('span');
             pill.className = 'bookmark-pill';
+            pill.setAttribute('role', 'group');
             pill.dataset.time = bk.t;
             pill.dataset.index = idx;
             const noteText = bk.n ? ` <span class="bookmark-note-text">\u2014 ${bk.n.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</span>` : '';
-            pill.innerHTML = `<span class="bookmark-time-text">${formatTime(bk.t)}</span>${noteText}<span class="bookmark-edit-icon" data-idx="${idx}" title="Edit note">&#9998;</span><span class="bookmark-delete" data-idx="${idx}">&times;</span>`;
+            pill.innerHTML = `<button type="button" class="bookmark-open" aria-label="Play from ${formatTime(bk.t)}"><span class="bookmark-time-text">${formatTime(bk.t)}</span>${noteText}</button><button type="button" class="bookmark-edit-icon" data-idx="${idx}" aria-label="Edit bookmark note">&#9998;</button><button type="button" class="bookmark-delete" data-idx="${idx}" aria-label="Delete bookmark">&times;</button>`;
             elements.bookmarksList.appendChild(pill);
         });
         updateNotesBadge();
@@ -2150,7 +2701,8 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         // Pill clicked — seek to time
-        const pill = e.target.closest('.bookmark-pill');
+        const openButton = e.target.closest('.bookmark-open');
+        const pill = openButton && openButton.closest('.bookmark-pill');
         if (pill) {
             const time = parseFloat(pill.dataset.time);
             elements.videoPlayer.currentTime = time;
@@ -2164,12 +2716,17 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.videoPlayer.playbackRate = speed;
         // Update the overlay dropdown to match
         elements.currentSpeedBtn.innerText = speed.toFixed(2).replace(/\.00$/, '.0') + 'x';
+        elements.currentSpeedBtn.setAttribute('aria-label', `Playback speed, ${elements.currentSpeedBtn.innerText}`);
         elements.speedDropdownBtns.forEach(b => {
-            b.classList.toggle('active', parseFloat(b.dataset.speed) === speed);
+            const active = parseFloat(b.dataset.speed) === speed;
+            b.classList.toggle('active', active);
+            b.setAttribute('aria-checked', String(active));
         });
         // Update preset buttons
         elements.speedPresetBtns.forEach(b => {
-            b.classList.toggle('active', parseFloat(b.dataset.speed) === speed);
+            const active = parseFloat(b.dataset.speed) === speed;
+            b.classList.toggle('active', active);
+            b.setAttribute('aria-pressed', String(active));
         });
     }
 
@@ -2186,6 +2743,8 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.favIcon.setAttribute('fill', isFav ? 'currentColor' : 'none');
         elements.favBtn.classList.toggle('fav-active', isFav);
         elements.favBtn.title = isFav ? 'Remove from favorites' : 'Add to favorites';
+        elements.favBtn.setAttribute('aria-pressed', String(isFav));
+        elements.favBtn.setAttribute('aria-label', elements.favBtn.title);
     }
 
     elements.favBtn.addEventListener('click', () => {
@@ -2199,6 +2758,7 @@ document.addEventListener('DOMContentLoaded', () => {
         safeStore('favoriteVideos', JSON.stringify([...state.favorites]));
         updateFavBtn();
         updateNotesBadge();
+        updateHomeStats();
     });
 
     // ── Notes & Favorites View ─────────────────────────
@@ -2206,11 +2766,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const notesContent = document.getElementById('notes-content');
     const notesSubtitle = document.getElementById('notes-subtitle');
 
-    // Track which button opened a modal so we can return focus on close
-    let lastModalTrigger = null;
-
     function showNotesView() {
-        lastModalTrigger = document.activeElement;
         pauseVideoPlayback();
         pendingUnfavorites = new Set();
         notesView.style.display = 'flex';
@@ -2218,9 +2774,9 @@ document.addEventListener('DOMContentLoaded', () => {
         markNotesSeen();
     }
 
-    function closeNotesView() {
+    function closeNotesView(options = {}) {
+        if (options.restoreFocus === false) suppressDialogFocusReturn(notesView);
         notesView.style.display = 'none';
-        if (lastModalTrigger) { lastModalTrigger.focus(); lastModalTrigger = null; }
     }
 
     function resolveVideoObj(videoPath) {
@@ -2228,7 +2784,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!info) return null;
         const parts = videoPath.split('/');
         const filename = parts.pop();
-        const title = filename.replace(/\.(mp4|mov)$/i, '');
+            const title = titleFromFilename(filename);
         return { title, path: videoPath, folderPath: parts.join(' / '), ...info };
     }
 
@@ -2282,8 +2838,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const headerHtml = `<div class="notes-section-title" style="justify-content: space-between;">
                 <span>&#9998; Bookmarks &amp; Notes</span>
                 <div class="notes-filter-toggle">
-                    <button class="notes-filter-btn ${notesFilterMode === 'all' ? 'active' : ''}" data-filter="all">All</button>
-                    <button class="notes-filter-btn ${notesFilterMode === 'notes-only' ? 'active' : ''}" data-filter="notes-only">With notes</button>
+                    <button type="button" class="notes-filter-btn ${notesFilterMode === 'all' ? 'active' : ''}" data-filter="all" aria-pressed="${notesFilterMode === 'all'}">All</button>
+                    <button type="button" class="notes-filter-btn ${notesFilterMode === 'notes-only' ? 'active' : ''}" data-filter="notes-only" aria-pressed="${notesFilterMode === 'notes-only'}">With notes</button>
                 </div>
             </div>`;
             section.innerHTML = headerHtml;
@@ -2319,13 +2875,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     const noteHtml = hasNote
                         ? `<span class="notes-bookmark-note">${escapedNote}</span>${noteAgo}`
                         : '<span class="notes-bookmark-notext">No note</span>';
-                    itemsHtml += `<div class="notes-bookmark-item ${hasNote ? 'has-note' : ''}" data-path="${videoPath}" data-time="${bk.t}" data-bk-idx="${realIdx}">
-                        <span class="notes-bookmark-time">${formatTime(bk.t)}</span>
-                        <span class="notes-bookmark-text-wrap">${noteHtml}</span>
+                    itemsHtml += `<div class="notes-bookmark-item ${hasNote ? 'has-note' : ''}" data-path="${videoPath}" data-time="${bk.t}" data-bk-idx="${realIdx}" role="group">
+                        <div class="notes-bookmark-open" role="button" tabindex="0" data-path="${videoPath}" data-time="${bk.t}">
+                            <span class="notes-bookmark-time">${formatTime(bk.t)}</span>
+                            <span class="notes-bookmark-text-wrap">${noteHtml}</span>
+                        </div>
                         <span class="notes-item-actions">
-                            <span class="notes-item-copy" data-path="${videoPath}" data-time="${bk.t}" data-note="${escapedNote}" title="Copy to clipboard">&#128203;</span>
-                            <span class="notes-item-edit" data-path="${videoPath}" data-bk-idx="${realIdx}" data-note="${escapedNote}" title="Edit note">&#9998;</span>
-                            <span class="notes-item-delete" data-path="${videoPath}" data-bk-idx="${realIdx}" title="Delete bookmark">&times;</span>
+                            <button type="button" class="notes-item-copy" data-path="${videoPath}" data-time="${bk.t}" data-note="${escapedNote}" aria-label="Copy note">&#128203;</button>
+                            <button type="button" class="notes-item-edit" data-path="${videoPath}" data-bk-idx="${realIdx}" data-note="${escapedNote}" aria-label="Edit note">&#9998;</button>
+                            <button type="button" class="notes-item-delete" data-path="${videoPath}" data-bk-idx="${realIdx}" aria-label="Delete bookmark">&times;</button>
                         </span>
                     </div>`;
                 });
@@ -2333,7 +2891,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 group.innerHTML = `
                     <div class="notes-video-header">
                         <div>
-                            <div class="notes-video-title" data-path="${videoPath}">${videoObj.title}</div>
+                            <button type="button" class="notes-video-title" data-path="${videoPath}">${videoObj.title}</button>
                             <div class="notes-video-path">${videoObj.folderPath}</div>
                         </div>
                     </div>
@@ -2381,10 +2939,14 @@ document.addEventListener('DOMContentLoaded', () => {
             const text = note
                 ? `${time} — "${note}" — ${videoTitle} (${folder})`
                 : `${time} — ${videoTitle} (${folder})`;
-            navigator.clipboard.writeText(text).then(() => {
+            copyText(text).then(copied => {
+                if (!copied) {
+                    showToast('Copy is unavailable in this browser.', 4000, true);
+                    return;
+                }
                 copyIcon.textContent = '✓';
                 setTimeout(() => { copyIcon.textContent = '📋'; }, 1500);
-            }).catch(() => {});
+            });
             return;
         }
 
@@ -2394,13 +2956,25 @@ document.addEventListener('DOMContentLoaded', () => {
             e.stopPropagation();
             const item = editIcon.closest('.notes-bookmark-item');
             const textWrap = item.querySelector('.notes-bookmark-text-wrap');
+            const openTarget = item.querySelector('.notes-bookmark-open');
+            openTarget.removeAttribute('role');
+            openTarget.removeAttribute('tabindex');
             const currentNote = editIcon.dataset.note || '';
             const videoPath = editIcon.dataset.path;
             const bkIdx = parseInt(editIcon.dataset.bkIdx);
 
-            // Replace text with input
-            textWrap.innerHTML = `<input type="text" class="notes-inline-edit" value="${currentNote.replace(/"/g, '&quot;')}" placeholder="Add a note..." maxlength="120">`;
-            const input = textWrap.querySelector('.notes-inline-edit');
+            // Replace text with a labelled input without interpolating note text into HTML.
+            textWrap.innerHTML = '';
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.className = 'notes-inline-edit';
+            input.value = currentNote;
+            input.placeholder = 'Add a note...';
+            input.maxLength = 120;
+            const videoObj = resolveVideoObj(videoPath);
+            const context = videoObj ? ` for ${videoObj.title}` : '';
+            input.setAttribute('aria-label', `Edit note at ${formatTime(parseFloat(item.dataset.time))}${context}`);
+            textWrap.appendChild(input);
             input.focus();
             input.selectionStart = input.value.length;
 
@@ -2459,19 +3033,14 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // Bookmark item → load video + seek
-        const bookmarkItem = e.target.closest('.notes-bookmark-item');
+        const openButton = e.target.closest('.notes-bookmark-open');
+        const bookmarkItem = openButton && openButton.closest('.notes-bookmark-item');
         if (bookmarkItem) {
             const videoObj = resolveVideoObj(bookmarkItem.dataset.path);
             if (videoObj) {
                 const seekTime = parseFloat(bookmarkItem.dataset.time);
-                closeNotesView();
-                skipNextResume = true;
-                loadVideo(videoObj);
-                const onReady = () => {
-                    elements.videoPlayer.currentTime = seekTime;
-                    elements.videoPlayer.removeEventListener('loadedmetadata', onReady);
-                };
-                elements.videoPlayer.addEventListener('loadedmetadata', onReady);
+                closeNotesView({ restoreFocus: false });
+                loadVideo(videoObj, { seekTime });
             }
             return;
         }
@@ -2481,7 +3050,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (videoTitle) {
             const videoObj = resolveVideoObj(videoTitle.dataset.path);
             if (videoObj) {
-                closeNotesView();
+                closeNotesView({ restoreFocus: false });
                 loadVideo(videoObj);
             }
             return;
@@ -2491,13 +3060,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Notes view click delegation — bound once
     notesContent.addEventListener('click', handleNotesClick);
+    notesContent.addEventListener('keydown', event => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        const target = event.target.closest('.notes-bookmark-open');
+        if (!target || event.target !== target) return;
+        event.preventDefault();
+        target.click();
+    });
 
     // Notes button in sidebar
     document.getElementById('notes-sidebar-btn').addEventListener('click', () => {
         showNotesView();
         if (window.innerWidth <= 768) {
-            elements.sidebar.classList.remove('open');
-            document.body.classList.remove('sidebar-open');
+            setSidebarOpen(false, { restoreFocus: false });
         }
     });
 
@@ -2509,6 +3084,8 @@ document.addEventListener('DOMContentLoaded', () => {
         theaterMode = !theaterMode;
         document.body.classList.toggle('theater-mode', theaterMode);
         theaterBtn.classList.toggle('theater-active', theaterMode);
+        theaterBtn.setAttribute('aria-pressed', String(theaterMode));
+        theaterBtn.setAttribute('aria-label', theaterMode ? 'Exit theater mode' : 'Enter theater mode');
     }
 
     theaterBtn.addEventListener('click', toggleTheater);
@@ -2525,19 +3102,25 @@ document.addEventListener('DOMContentLoaded', () => {
         spotlightInput.value = '';
         spotlightResults.innerHTML = '';
         spotlightActive = -1;
+        spotlightInput.setAttribute('aria-expanded', 'true');
+        spotlightInput.removeAttribute('aria-activedescendant');
         setTimeout(() => spotlightInput.focus(), 50);
     }
 
-    function closeSpotlight() {
+    function closeSpotlight(options = {}) {
+        if (options.restoreFocus === false) suppressDialogFocusReturn(spotlightOverlay);
         spotlightOverlay.style.display = 'none';
         spotlightInput.value = '';
         spotlightResults.innerHTML = '';
+        spotlightInput.setAttribute('aria-expanded', 'false');
+        spotlightInput.removeAttribute('aria-activedescendant');
         spotlightInput.blur();
     }
 
     function renderSpotlightResults(query) {
         spotlightResults.innerHTML = '';
         spotlightActive = -1;
+        spotlightInput.removeAttribute('aria-activedescendant');
         if (!query.trim()) return;
 
         const q = query.toLowerCase();
@@ -2546,7 +3129,7 @@ document.addEventListener('DOMContentLoaded', () => {
         for (const [path, info] of Object.entries(videoData)) {
             const parts = path.split('/');
             const filename = parts[parts.length - 1];
-            const title = filename.replace(/\.(mp4|mov)$/i, '');
+            const title = titleFromFilename(filename);
             const searchStr = (title + ' ' + parts.slice(0, -1).join(' ')).toLowerCase();
 
             if (searchStr.includes(q)) {
@@ -2560,18 +3143,24 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        matches.sort((a, b) => compareNatural(a.title, b.title));
         matches.forEach((m, i) => {
-            const div = document.createElement('div');
-            div.className = 'spotlight-result' + (i === 0 ? ' active' : '');
-            div.innerHTML = `<span class="spotlight-result-title">${m.title}</span><span class="spotlight-result-path">${m.folderPath}</span>`;
-            div.addEventListener('click', () => {
+            const result = document.createElement('button');
+            result.type = 'button';
+            result.id = `spotlight-result-${i}`;
+            result.setAttribute('role', 'option');
+            result.setAttribute('aria-selected', String(i === 0));
+            result.className = 'spotlight-result' + (i === 0 ? ' active' : '');
+            result.innerHTML = `<span class="spotlight-result-title">${m.title}</span><span class="spotlight-result-path">${m.folderPath}</span>`;
+            result.addEventListener('click', () => {
                 const videoObj = { title: m.title, path: m.path, ...m.info };
-                closeSpotlight();
+                closeSpotlight({ restoreFocus: false });
                 loadVideo(videoObj);
             });
-            spotlightResults.appendChild(div);
+            spotlightResults.appendChild(result);
         });
         spotlightActive = 0;
+        spotlightInput.setAttribute('aria-activedescendant', 'spotlight-result-0');
     }
 
     let spotlightTimeout;
@@ -2586,13 +3175,23 @@ document.addEventListener('DOMContentLoaded', () => {
             e.preventDefault();
             if (items.length === 0) return;
             spotlightActive = Math.min(spotlightActive + 1, items.length - 1);
-            items.forEach((el, i) => el.classList.toggle('active', i === spotlightActive));
+            items.forEach((el, i) => {
+                const active = i === spotlightActive;
+                el.classList.toggle('active', active);
+                el.setAttribute('aria-selected', String(active));
+            });
+            spotlightInput.setAttribute('aria-activedescendant', items[spotlightActive].id);
             items[spotlightActive].scrollIntoView({ block: 'nearest' });
         } else if (e.key === 'ArrowUp') {
             e.preventDefault();
             if (items.length === 0) return;
             spotlightActive = Math.max(spotlightActive - 1, 0);
-            items.forEach((el, i) => el.classList.toggle('active', i === spotlightActive));
+            items.forEach((el, i) => {
+                const active = i === spotlightActive;
+                el.classList.toggle('active', active);
+                el.setAttribute('aria-selected', String(active));
+            });
+            spotlightInput.setAttribute('aria-activedescendant', items[spotlightActive].id);
             items[spotlightActive].scrollIntoView({ block: 'nearest' });
         } else if (e.key === 'Enter') {
             e.preventDefault();
@@ -2608,6 +3207,8 @@ document.addEventListener('DOMContentLoaded', () => {
     spotlightOverlay.addEventListener('click', (e) => {
         if (e.target === spotlightOverlay) closeSpotlight();
     });
+    const homeSearchBtn = document.getElementById('home-search-btn');
+    if (homeSearchBtn) homeSearchBtn.addEventListener('click', openSpotlight);
 
     // ── Shortcuts Overlay ────────────────────────────────
     const shortcutsOverlay = document.getElementById('shortcuts-overlay');
@@ -2633,8 +3234,7 @@ document.addEventListener('DOMContentLoaded', () => {
         pauseVideoPlayback();
         helpModal.style.display = 'flex';
         if (window.innerWidth <= 768) {
-            elements.sidebar.classList.remove('open');
-            document.body.classList.remove('sidebar-open');
+            setSidebarOpen(false, { restoreFocus: false });
         }
     };
     document.getElementById('help-btn').addEventListener('click', openHelpModal);
@@ -2704,13 +3304,13 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!info) continue;
             const parts = entry.path.split('/');
             const filename = parts.pop();
-            const title = filename.replace(/\.(mp4|mov)$/i, '');
+            const title = titleFromFilename(filename);
             const folder = parts.join(' / ');
             const ago = entry.lastWatched ? timeAgo(entry.lastWatched) : '';
             const resumeTime = positions[entry.path];
             const resumeStr = resumeTime ? formatTime(resumeTime) : '';
 
-            html += `<div class="history-item" data-path="${entry.path}" style="cursor: pointer;">
+            html += `<div class="history-item" data-path="${entry.path}" role="button" tabindex="0" style="cursor: pointer;">
                 <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 10px;">
                     <div style="min-width: 0; flex: 1;">
                         <div style="font-weight: 500; color: var(--text-main); margin-bottom: 2px; word-break: break-word;">${title}</div>
@@ -2735,10 +3335,17 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!info) return;
         const parts = path.split('/');
         const filename = parts.pop();
-        const title = filename.replace(/\.(mp4|mov)$/i, '');
+            const title = titleFromFilename(filename);
         const videoObj = { title, path, ...info };
-        historyModal.style.display = 'none';
+        closeHistoryModal({ restoreFocus: false });
         loadVideo(videoObj);
+    });
+    historyContent.addEventListener('keydown', event => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        const item = event.target.closest('.history-item');
+        if (!item || event.target !== item) return;
+        event.preventDefault();
+        item.click();
     });
 
     // Search input
@@ -2749,7 +3356,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     function showHistoryModal() {
-        lastModalTrigger = document.activeElement;
         pauseVideoPlayback();
         historySearchQuery = '';
         historySearchInput.value = '';
@@ -2757,9 +3363,9 @@ document.addEventListener('DOMContentLoaded', () => {
         historyModal.style.display = 'flex';
     }
 
-    function closeHistoryModal() {
+    function closeHistoryModal(options = {}) {
+        if (options.restoreFocus === false) suppressDialogFocusReturn(historyModal);
         historyModal.style.display = 'none';
-        if (lastModalTrigger) { lastModalTrigger.focus(); lastModalTrigger = null; }
     }
 
     document.getElementById('close-history-modal').addEventListener('click', closeHistoryModal);
@@ -2806,13 +3412,15 @@ document.addEventListener('DOMContentLoaded', () => {
             matchCount++;
 
             const isUnfavorited = favPendingUnfavs.has(favPath);
-            html += `<div class="notes-fav-item ${isUnfavorited ? 'notes-fav-removed' : ''}" data-path="${favPath}">
-                <span class="notes-fav-star">${isUnfavorited ? '&#9734;' : '&#9733;'}</span>
-                <div style="flex:1;min-width:0;">
-                    <div class="notes-fav-title">${videoObj.title}</div>
-                    <div class="notes-fav-path">${videoObj.folderPath}</div>
-                </div>
-                <button class="notes-fav-toggle" data-path="${favPath}" title="${isUnfavorited ? 'Re-favorite' : 'Remove from favorites'}">
+            html += `<div class="notes-fav-item ${isUnfavorited ? 'notes-fav-removed' : ''}" data-path="${favPath}" role="group" aria-label="${videoObj.title}">
+                <button type="button" class="notes-fav-open" data-path="${favPath}" ${isUnfavorited ? 'disabled' : ''}>
+                    <span class="notes-fav-star">${isUnfavorited ? '&#9734;' : '&#9733;'}</span>
+                    <span style="flex:1;min-width:0;">
+                        <span class="notes-fav-title">${videoObj.title}</span>
+                        <span class="notes-fav-path">${videoObj.folderPath}</span>
+                    </span>
+                </button>
+                <button type="button" class="notes-fav-toggle" data-path="${favPath}" title="${isUnfavorited ? 'Re-favorite' : 'Remove from favorites'}">
                     ${isUnfavorited ? 'Re-favorite' : 'Unfavorite'}
                 </button>
             </div>`;
@@ -2846,14 +3454,22 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         // Click item to load video
-        const item = e.target.closest('.notes-fav-item');
+        const openButton = e.target.closest('.notes-fav-open');
+        const item = openButton && openButton.closest('.notes-fav-item');
         if (item && !item.classList.contains('notes-fav-removed')) {
             const videoObj = resolveVideoObj(item.dataset.path);
             if (videoObj) {
-                favoritesModal.style.display = 'none';
+                closeFavoritesModal({ restoreFocus: false });
                 loadVideo(videoObj);
             }
         }
+    });
+    favoritesContent.addEventListener('keydown', event => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        const item = event.target.closest('.notes-fav-item');
+        if (!item || event.target !== item) return;
+        event.preventDefault();
+        item.click();
     });
 
     const favSearchInput = document.getElementById('favorites-search-input');
@@ -2863,7 +3479,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     function showFavoritesModal() {
-        lastModalTrigger = document.activeElement;
         pauseVideoPlayback();
         favSearchQuery = '';
         favSearchInput.value = '';
@@ -2872,9 +3487,9 @@ document.addEventListener('DOMContentLoaded', () => {
         favoritesModal.style.display = 'flex';
     }
 
-    function closeFavoritesModal() {
+    function closeFavoritesModal(options = {}) {
+        if (options.restoreFocus === false) suppressDialogFocusReturn(favoritesModal);
         favoritesModal.style.display = 'none';
-        if (lastModalTrigger) { lastModalTrigger.focus(); lastModalTrigger = null; }
     }
 
     document.getElementById('close-favorites-modal').addEventListener('click', closeFavoritesModal);
@@ -2927,7 +3542,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (withNotes.length === 0) continue;
                 const parts = path.split('/');
                 const filename = parts.pop();
-                const title = filename.replace(/\.(mp4|mov)$/i, '');
+            const title = titleFromFilename(filename);
                 body += title + ' (' + parts.join(' / ') + ')\n';
                 for (const bk of withNotes) {
                     body += '  ' + formatTime(bk.t) + ' — ' + bk.n + '\n';
@@ -2950,15 +3565,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 const bks = typeof arr[0] === 'object' ? arr : arr.map(t => ({ t, n: '' }));
                 const parts = path.split('/');
                 const filename = parts.pop();
-                const title = filename.replace(/\.(mp4|mov)$/i, '');
-                html += '<h2>' + title + ' <small style="color:#999;">' + parts.join(' / ') + '</small></h2>';
+                const title = titleFromFilename(filename);
+                html += '<h2>' + escapeHtml(title) + ' <small style="color:#999;">' + escapeHtml(parts.join(' / ')) + '</small></h2>';
                 for (const bk of bks) {
                     const noteText = bk.n ? ' — ' + bk.n : '';
-                    html += '<p><span class="time">' + formatTime(bk.t) + '</span><span class="note">' + noteText + '</span></p>';
+                    html += '<p><span class="time">' + formatTime(bk.t) + '</span><span class="note">' + escapeHtml(noteText) + '</span></p>';
                 }
             }
             html += '</body></html>';
             const win = window.open('', '_blank');
+            if (!win) {
+                showToast('Allow pop-ups to print your dance notes.', 5000, true);
+                return;
+            }
             win.document.write(html);
             win.document.close();
             win.print();
@@ -2982,17 +3601,40 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ── Keyboard Shortcuts ───────────────────────────────
     document.addEventListener('keydown', (e) => {
-        // Skip if user is typing in an input/select/textarea
-        const tag = e.target.tagName;
-        if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+        if (e.key === 'Escape') {
+            const activeDialog = topmostOpenDialog();
+            if (activeDialog) {
+                e.preventDefault();
+                switch (activeDialog.id) {
+                    case 'spotlight-overlay': closeSpotlight(); break;
+                    case 'notes-view': closeNotesView(); break;
+                    case 'history-modal': closeHistoryModal(); break;
+                    case 'favorites-modal': closeFavoritesModal(); break;
+                    case 'export-modal': exportModal.style.display = 'none'; break;
+                    case 'shortcuts-overlay': shortcutsOverlay.style.display = 'none'; break;
+                    case 'help-modal': helpModal.style.display = 'none'; break;
+                    case 'settings-modal': elements.settingsModal.style.display = 'none'; break;
+                    default: activeDialog.style.display = 'none';
+                }
+                return;
+            }
+            if (window.innerWidth <= 768 && sidebarIsOpen()) { setSidebarOpen(false); return; }
+            if (theaterMode) { toggleTheater(); return; }
+            if (state.loopA !== null || state.loopB !== null) clearABLoop();
+            return;
+        }
 
-        // Global shortcuts
         if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
             e.preventDefault();
             if (spotlightOverlay.style.display !== 'none') { closeSpotlight(); } else { openSpotlight(); }
             return;
         }
 
+        // Preserve native keyboard behavior for controls, links, and editable content.
+        const interactive = e.target.closest('input, select, textarea, button, a, [role="button"], [contenteditable="true"]');
+        if (interactive) return;
+
+        // Global shortcuts
         if (e.key === '?') {
             e.preventDefault();
             toggleShortcuts();
@@ -3034,48 +3676,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     setLoopB();
                 }
                 break;
-            case 'Escape':
-                // Close overlays first (priority order)
-                if (spotlightOverlay.style.display !== 'none') {
-                    closeSpotlight();
-                    return;
-                }
-                if (notesView.style.display !== 'none') {
-                    closeNotesView();
-                    return;
-                }
-                if (historyModal.style.display !== 'none') {
-                    closeHistoryModal();
-                    return;
-                }
-                if (favoritesModal.style.display !== 'none') {
-                    closeFavoritesModal();
-                    return;
-                }
-if (exportModal.style.display !== 'none') {
-                    exportModal.style.display = 'none';
-                    return;
-                }
-                if (shortcutsOverlay.style.display !== 'none') {
-                    shortcutsOverlay.style.display = 'none';
-                    return;
-                }
-                if (helpModal.style.display !== 'none') {
-                    helpModal.style.display = 'none';
-                    return;
-                }
-                if (elements.settingsModal.style.display === 'flex') {
-                    elements.settingsModal.style.display = 'none';
-                    return;
-                }
-                if (theaterMode) {
-                    toggleTheater();
-                    return;
-                }
-                if (state.loopA !== null || state.loopB !== null) {
-                    clearABLoop();
-                }
-                break;
             case 'm':
             case 'M':
                 if (!videoVisible) return;
@@ -3093,4 +3693,12 @@ if (exportModal.style.display !== 'none') {
                 break;
         }
     });
+
+    // Start only after every module-level binding and event handler is initialized.
+    try {
+        init();
+    } catch (error) {
+        showFatalError('A startup error interrupted the library. Reload to try again.');
+        console.error(error);
+    }
 });

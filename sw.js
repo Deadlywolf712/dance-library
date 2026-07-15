@@ -1,17 +1,17 @@
 // Resilient offline shell for Dance Library.
-// App files use network-first; third-party assets use stale-while-revalidate.
+// Navigations use network-first; static assets use stale-while-revalidate.
 
-const CACHE_VERSION = 6;
+const CACHE_VERSION = 9;
 const CACHE_PREFIX = 'dance-library-v';
 const CACHE_NAME = `${CACHE_PREFIX}${CACHE_VERSION}`;
 
 const APP_FILES = [
   './',
   './index.html',
-  './style.css',
-  './app.js',
-  './data.js',
-  './salsa_course.js',
+  './style.css?v=9',
+  './app.js?v=9',
+  './data.js?v=9',
+  './salsa_course.js?v=9',
   './manifest.json',
   './icon.svg',
   './icon-192.png',
@@ -52,30 +52,43 @@ self.addEventListener('fetch', event => {
   if (isMedia) return;
 
   if (url.origin === self.location.origin) {
-    event.respondWith((async () => {
-      try {
-        const response = await fetch(request);
-        if (response.ok) {
-          const cache = await caches.open(CACHE_NAME);
-          await cache.put(request, response.clone());
-        }
-        return response;
-      } catch (_) {
-        const cached = await caches.match(request);
-        if (cached) return cached;
-        if (request.mode === 'navigate') {
-          return (await caches.match('./index.html'))
+    if (request.mode === 'navigate') {
+      event.respondWith((async () => {
+        try {
+          const response = await fetch(request);
+          if (response.ok) {
+            const cache = await caches.open(CACHE_NAME);
+            await cache.put(request, response.clone());
+          }
+          return response;
+        } catch (_) {
+          return (await caches.match(request))
+            || (await caches.match('./index.html'))
             || new Response('Dance Library is unavailable offline.', {
               status: 503,
               headers: { 'Content-Type': 'text/plain; charset=utf-8' }
             });
         }
-        return new Response('This asset is unavailable offline.', {
+      })());
+      return;
+    }
+
+    const refresh = fetch(request).then(async response => {
+      if (response.ok) {
+        const cache = await caches.open(CACHE_NAME);
+        await cache.put(request, response.clone());
+      }
+      return response;
+    });
+    event.waitUntil(refresh.catch(() => undefined));
+    event.respondWith(
+      caches.match(request).then(cached => cached || refresh).catch(() =>
+        new Response('This asset is unavailable offline.', {
           status: 503,
           headers: { 'Content-Type': 'text/plain; charset=utf-8' }
-        });
-      }
-    })());
+        })
+      )
+    );
     return;
   }
 

@@ -1,0 +1,211 @@
+{
+  "version": 1,
+  "lessonCount": 795,
+  "summaryCount": 795,
+  "chunks": [
+    {
+      "id": "adolfo-indacochea-tania-cannarsa-salsa-on2-advanced-bd1f8730",
+      "folder": "Adolfo Indacochea  Tania Cannarsa - Salsa On2 Advanced",
+      "lessons": 20,
+      "file": "adolfo-indacochea-tania-cannarsa-salsa-on2-advanced-bd1f8730.js"
+    },
+    {
+      "id": "adolfo-indacochea-tania-cannarsa-salsa-on2-beginner-e5823a65",
+      "folder": "Adolfo Indacochea  Tania Cannarsa - Salsa On2 Beginner",
+      "lessons": 20,
+      "file": "adolfo-indacochea-tania-cannarsa-salsa-on2-beginner-e5823a65.js"
+    },
+    {
+      "id": "adolfo-indacochea-tania-cannarsa-salsa-on2-intermedi-8c7bfa0e",
+      "folder": "Adolfo Indacochea  Tania Cannarsa - Salsa On2 Intermediate",
+      "lessons": 20,
+      "file": "adolfo-indacochea-tania-cannarsa-salsa-on2-intermedi-8c7bfa0e.js"
+    },
+    {
+      "id": "alex-desiree-advanced-b2170d22",
+      "folder": "Alex  Desirée - Advanced",
+      "lessons": 20,
+      "file": "alex-desiree-advanced-b2170d22.js"
+    },
+    {
+      "id": "alex-desiree-beginner-23ee47d4",
+      "folder": "Alex  Desirée - Beginner",
+      "lessons": 20,
+      "file": "alex-desiree-beginner-23ee47d4.js"
+    },
+    {
+      "id": "alex-desiree-intermediate-d6a54cf6",
+      "folder": "Alex  Desirée - Intermediate",
+      "lessons": 20,
+      "file": "alex-desiree-intermediate-d6a54cf6.js"
+    },
+    {
+      "id": "arthur-oksana-zouk-advanced-e86497db",
+      "folder": "Arthur  Oksana - Zouk Advanced",
+      "lessons": 12,
+      "file": "arthur-oksana-zouk-advanced-e86497db.js"
+    },
+    {
+      "id": "arthur-oksana-zouk-beginner-6d31ba95",
+      "folder": "Arthur  Oksana - Zouk Beginner",
+      "lessons": 14,
+      "file": "arthur-oksana-zouk-beginner-6d31ba95.js"
+    },
+    {
+      "id": "arthur-oksana-zouk-beginner-intermediate-ac53998f",
+      "folder": "Arthur  Oksana - Zouk Beginner-Intermediate",
+      "lessons": 12,
+      "file": "arthur-oksana-zouk-beginner-intermediate-ac53998f.js"
+    },
+    {
+      "id": "arthur-oksana-zouk-intermediate-advanced-8168d6d7",
+      "folder": "Arthur  Oksana - Zouk Intermediate-Advanced",
+      "lessons": 11,
+      "file": "arthur-oksana-zouk-intermediate-advanced-8168d6d7.js"
+    },
+    {
+      "id": "arthur-oksana-zouk-intermediate-ef33fc7a",
+      "folder": "Arthur  Oksana - Zouk Intermediate",
+      "lessons": 11,
+      "file": "arthur-oksana-zouk-intermediate-ef33fc7a.js"
+    },
+    {
+      "id": "carolina-rosa-advanced-720dd31a",
+      "folder": "Carolina Rosa - Advanced",
+      "lessons": 10,
+      "file": "carolina-rosa-advanced-720dd31a.js"
+    },
+    {
+      "id": "carolina-rosa-beginner-516aa4e0",
+      "folder": "Carolina Rosa - Beginner",
+      "lessons": 10,
+      "file": "carolina-rosa-beginner-516aa4e0.js"
+    },
+    {
+      "id": "carolina-rosa-intermediate-d2293794",
+      "folder": "Carolina Rosa - Intermediate",
+      "lessons": 10,
+      "file": "carolina-rosa-intermediate-d2293794.js"
+    },
+    {
+      "id": "fernando-sosa-tatiana-bonaguro-sosa-style-advanced-512c5d0a",
+      "folder": "Fernando Sosa  Tatiana Bonaguro - Sosa Style Advanced",
+      "lessons": 20,
+      "file": "fernando-sosa-tatiana-bonaguro-sosa-style-advanced-512c5d0a.js"
+    },
+    {
+      "id": "fernando-sosa-tatiana-bonaguro-sosa-style-beginner-34b0ae57",
+      "folder": "Fernando Sosa  Tatiana Bonaguro - Sosa Style Beginner",
+      "lessons": 20,
+      "file": "fernando-sosa-tatiana-bonaguro-sosa-style-beginner-34b0ae57.js"
+    },
+    {
+      "id": "fernando-sosa-tatiana-bonaguro-sosa-style-intermedia-418d3835",
+      "folder": "Fernando Sosa  Tatiana Bonaguro - Sosa Style Intermediate",
+      "lessons": 20,
+      "file": "fernando-sosa-tatiana-bonaguro-sosa-style-intermedia-418d3835.js"
+    },
+    {
+      "id": "fernando-sosa-tatiana-bonaguro-sosa-style-on-2-9984f86a",
+      "folder": "Fernando Sosa  Tatiana Bonaguro - Sosa Style On 2",
+      "lessons": 30,
+      "file": "fernando-sosa-tatiana-bonaguro-sosa-style-on-2-9984f86a.js"
+    },
+    {
+      "id": "fernando-sosa-tatiana-bonaguro-sosa-style-upgrade-37eae5d1",
+      "folder": "Fernando Sosa  Tatiana Bonaguro - Sosa Style Upgrade",
+      "lessons": 15,
+      "file": "fernando-sosa-tatiana-bonaguro-sosa-style-upgrade-37eae5d1.js"
+    },
+    {
+      "id": "isabelle-felicien-advanced-e908d1fb",
+      "folder": "Isabelle  Felicien - Advanced",
+      "lessons": 19,
+      "file": "isabelle-felicien-advanced-e908d1fb.js"
+    },
+    {
+      "id": "isabelle-felicien-beginner-1162e046",
+      "folder": "Isabelle  Felicien - Beginner",
+      "lessons": 20,
+      "file": "isabelle-felicien-beginner-1162e046.js"
+    },
+    {
+      "id": "isabelle-felicien-intermediate-c7f92023",
+      "folder": "Isabelle  Felicien - Intermediate",
+      "lessons": 20,
+      "file": "isabelle-felicien-intermediate-c7f92023.js"
+    },
+    {
+      "id": "kike-nahir-kike-nahir-combinations-1e0bd6d2",
+      "folder": "Kike  Nahir - Kike  Nahir Combinations",
+      "lessons": 17,
+      "file": "kike-nahir-kike-nahir-combinations-1e0bd6d2.js"
+    },
+    {
+      "id": "kizomba-masterclass-268967c0",
+      "folder": "Kizomba Masterclass",
+      "lessons": 65,
+      "file": "kizomba-masterclass-268967c0.js"
+    },
+    {
+      "id": "korke-judith-advanced-6ca31e2a",
+      "folder": "Korke  Judith - Advanced",
+      "lessons": 15,
+      "file": "korke-judith-advanced-6ca31e2a.js"
+    },
+    {
+      "id": "korke-judith-bachata-sensual-2025-new-techniques-and-960255de",
+      "folder": "Korke  Judith - Bachata Sensual 2025 New Techniques and Cadences",
+      "lessons": 16,
+      "file": "korke-judith-bachata-sensual-2025-new-techniques-and-960255de.js"
+    },
+    {
+      "id": "korke-judith-beginnerintermediate-9f563e72",
+      "folder": "Korke  Judith - BeginnerIntermediate",
+      "lessons": 36,
+      "file": "korke-judith-beginnerintermediate-9f563e72.js"
+    },
+    {
+      "id": "korke-judith-fundamentals-of-bachata-sensual-f6c9d084",
+      "folder": "Korke  Judith - Fundamentals of Bachata Sensual",
+      "lessons": 15,
+      "file": "korke-judith-fundamentals-of-bachata-sensual-f6c9d084.js"
+    },
+    {
+      "id": "korke-judith-intermediate-advanced-10200308",
+      "folder": "Korke  Judith - Intermediate  Advanced",
+      "lessons": 36,
+      "file": "korke-judith-intermediate-advanced-10200308.js"
+    },
+    {
+      "id": "marco-espejo-marco-espejo-style-21dc67d0",
+      "folder": "Marco Espejo - Marco Espejo Style",
+      "lessons": 25,
+      "file": "marco-espejo-marco-espejo-style-21dc67d0.js"
+    },
+    {
+      "id": "pablo-raquel-advanced-7654383c",
+      "folder": "Pablo  Raquel - Advanced",
+      "lessons": 18,
+      "file": "pablo-raquel-advanced-7654383c.js"
+    },
+    {
+      "id": "pablo-raquel-intermediate-6765f7d1",
+      "folder": "Pablo  Raquel - Intermediate",
+      "lessons": 15,
+      "file": "pablo-raquel-intermediate-6765f7d1.js"
+    },
+    {
+      "id": "pablo-raquel-intermediateadvanced-fb93acfd",
+      "folder": "Pablo  Raquel - IntermediateAdvanced",
+      "lessons": 36,
+      "file": "pablo-raquel-intermediateadvanced-fb93acfd.js"
+    },
+    {
+      "id": "salsa-masterclass-53016ced",
+      "folder": "Salsa Masterclass",
+      "lessons": 127,
+      "file": "salsa-masterclass-53016ced.js"
+    }
+  ]
+}

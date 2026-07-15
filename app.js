@@ -30,11 +30,18 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
     }
 
-    const checkIsMobile = () => window.innerWidth <= 768 || /Mobi|Android/i.test(navigator.userAgent);
+    const compactLayoutQuery = window.matchMedia('(max-width: 900px)');
+    const usesCompactLayout = () => compactLayoutQuery.matches;
+    const checkIsMobile = () => usesCompactLayout() || /Mobi|Android/i.test(navigator.userAgent);
     const isHosted = location.hostname.includes('github.io') || location.protocol === 'https:';
     const canUseLocalMedia = location.protocol === 'file:' || ['localhost', '127.0.0.1', '::1'].includes(location.hostname);
+    const HLS_RUNTIME_URL = 'https://cdn.jsdelivr.net/npm/hls.js@1.6.16/dist/hls.min.js';
+    const HLS_RUNTIME_INTEGRITY = 'sha384-5E8B0pTlZZJMabWpC0fyYf6OUpe15jJij34BqBAh4NXoHAlLNOjCPRrwtOXOQFAn';
+    const SUMMARY_ASSET_VERSION = 9;
     const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
     const preferredScrollBehavior = () => reducedMotionQuery.matches ? 'auto' : 'smooth';
+
+    document.documentElement.classList.toggle('hosted-site', isHosted);
 
     let storageWarningShown = false;
     let storageAccessFailed = false;
@@ -170,6 +177,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function makeKeyboardAccessible(element, activate, label) {
         if (!element) return;
+        if (element.matches('button, a[href], input, select, textarea')) {
+            if (label) element.setAttribute('aria-label', label);
+            return;
+        }
         element.tabIndex = 0;
         if (!element.hasAttribute('role')) element.setAttribute('role', 'button');
         if (label) element.setAttribute('aria-label', label);
@@ -198,6 +209,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Elements
     const elements = {
+        mainContent: document.getElementById('main-content'),
         sidebar: document.getElementById('sidebar'),
         menuToggle: document.getElementById('menu-toggle-btn'),
         closeSidebarBtn: document.getElementById('close-sidebar-btn'),
@@ -240,6 +252,14 @@ document.addEventListener('DOMContentLoaded', () => {
         playerContainer: document.querySelector('.player-container')
     };
 
+    const missingCoreElements = Object.entries(elements)
+        .filter(([, value]) => !value || (value instanceof NodeList && value.length === 0))
+        .map(([name]) => name);
+    if (missingCoreElements.length) {
+        showFatalError(`The interface is incomplete (${missingCoreElements.join(', ')}). Reload the library.`);
+        return;
+    }
+
     // Dance style accent colors
     const styleColors = {
         "Salsa": "#e74c3c",
@@ -253,6 +273,37 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Global HLS instance (declared early to avoid temporal dead zone)
     let hls = null;
+    let hlsRuntimePromise = null;
+
+    function ensureHlsRuntime() {
+        if (typeof globalThis.Hls !== 'undefined') return Promise.resolve(globalThis.Hls);
+        if (hlsRuntimePromise) return hlsRuntimePromise;
+
+        hlsRuntimePromise = new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.id = 'hls-runtime';
+            script.async = true;
+            script.crossOrigin = 'anonymous';
+            script.referrerPolicy = 'no-referrer';
+            script.integrity = HLS_RUNTIME_INTEGRITY;
+            script.src = HLS_RUNTIME_URL;
+            script.addEventListener('load', () => {
+                if (typeof globalThis.Hls === 'undefined') {
+                    reject(new Error('The HLS runtime loaded without exposing Hls.'));
+                    return;
+                }
+                resolve(globalThis.Hls);
+            }, { once: true });
+            script.addEventListener('error', () => reject(new Error('The HLS runtime could not be loaded.')), { once: true });
+            document.head.appendChild(script);
+        }).catch(error => {
+            document.getElementById('hls-runtime')?.remove();
+            hlsRuntimePromise = null;
+            throw error;
+        });
+
+        return hlsRuntimePromise;
+    }
 
     // Soft-delete tracking for tile unfavorites (cleared on navigation)
     let tilePendingUnfavs = new Set();
@@ -260,6 +311,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let notesSearchQuery = '';
 
     function init() {
+        document.body.dataset.view = 'home';
         parseDataToTree();
         const knownThemes = new Set([...elements.themeSelect.options].map(option => option.value));
         if (!knownThemes.has(state.theme)) state.theme = 'solarized-light';
@@ -390,13 +442,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function sidebarIsOpen() {
-        return window.innerWidth <= 768
+        return usesCompactLayout()
             ? elements.sidebar.classList.contains('open')
             : !document.body.classList.contains('sidebar-closed');
     }
 
     function syncSidebarAccessibility(dialogOpen = hasOpenDialog()) {
-        const mobile = window.innerWidth <= 768;
+        const mobile = usesCompactLayout();
         const closed = mobile
             ? !elements.sidebar.classList.contains('open')
             : document.body.classList.contains('sidebar-closed');
@@ -408,7 +460,7 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.sidebar.setAttribute('aria-hidden', String(dialogOpen || closed));
         if (mainContent) mainContent.inert = dialogOpen || mobileOpen;
         if (skipLink) skipLink.inert = dialogOpen || mobileOpen;
-        const expanded = window.innerWidth <= 768
+        const expanded = usesCompactLayout()
             ? elements.sidebar.classList.contains('open')
             : !document.body.classList.contains('sidebar-closed');
         for (const button of [elements.menuToggle, elements.openSidebarBtn]) {
@@ -416,13 +468,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function setSidebarOpen(open, { restoreFocus = true } = {}) {
+    function setSidebarOpen(open, { restoreFocus = true, focusSearch = false } = {}) {
         const wasOpen = sidebarIsOpen();
         if (open && !wasOpen && document.activeElement instanceof HTMLElement) {
             sidebarReturnFocus = document.activeElement;
         }
 
-        if (window.innerWidth <= 768) {
+        if (usesCompactLayout()) {
             elements.sidebar.classList.toggle('open', open);
             document.body.classList.toggle('sidebar-open', open);
         } else {
@@ -432,12 +484,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (open && !wasOpen) {
             requestAnimationFrame(() => {
-                const first = elements.searchInput
+                const first = (focusSearch ? elements.searchInput : elements.closeSidebarBtn)
                     || elements.sidebar.querySelector('button, a[href], input, [tabindex]:not([tabindex="-1"])');
                 if (first instanceof HTMLElement) first.focus();
             });
         } else if (!open && wasOpen) {
-            const fallback = window.innerWidth <= 768 ? elements.menuToggle : elements.openSidebarBtn;
+            const fallback = usesCompactLayout() ? elements.menuToggle : elements.openSidebarBtn;
             const target = sidebarReturnFocus?.isConnected ? sidebarReturnFocus : fallback;
             sidebarReturnFocus = null;
             if (restoreFocus) requestAnimationFrame(() => target?.focus());
@@ -487,7 +539,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     openDialogStack.push(dialog);
                     const active = document.activeElement;
                     if (active instanceof HTMLElement && !dialog.contains(active)) {
-                        const sidebarFallback = window.innerWidth <= 768 ? elements.menuToggle : elements.openSidebarBtn;
+                        const sidebarFallback = usesCompactLayout() ? elements.menuToggle : elements.openSidebarBtn;
                         const target = elements.sidebar.contains(active) && !sidebarIsOpen()
                             ? sidebarFallback
                             : active;
@@ -585,15 +637,20 @@ document.addEventListener('DOMContentLoaded', () => {
         requestAnimationFrame(() => document.getElementById('home-title')?.focus({ preventScroll: true }));
     }
 
+    function scrollMainToTop() {
+        elements.mainContent.scrollTo({ top: 0, behavior: preferredScrollBehavior() });
+    }
+
     function showLibraryHome(updateHistory = true) {
         pauseVideoPlayback({ destroyStream: true });
+        document.body.dataset.view = 'home';
         elements.videoView.style.display = 'none';
         closeNotesView({ restoreFocus: false });
         elements.homeView.style.display = 'block';
         clearActiveVideoLinks();
         state.currentVideo = null;
         renderHomeTiles(null, []);
-        window.scrollTo({ top: 0, behavior: preferredScrollBehavior() });
+        scrollMainToTop();
         if (updateHistory) setHomeRoute();
         focusHomeHeading();
     }
@@ -624,6 +681,36 @@ document.addEventListener('DOMContentLoaded', () => {
         renderFolderLevel(state.tree, elements.nav, 0);
     }
 
+    function hydrateNavigationTree(container = elements.nav) {
+        for (const child of [...container.children]) {
+            if (!child.classList.contains('nav-group')) continue;
+            const content = [...child.children].find(element => element.classList.contains('nav-content'));
+            if (!content) continue;
+            content._hydrate?.();
+            hydrateNavigationTree(content);
+        }
+    }
+
+    function revealNavigationPath(folderPath) {
+        let container = elements.nav;
+        let lastGroup = null;
+        for (const folderName of folderPath) {
+            const group = [...container.children].find(element =>
+                element.classList.contains('nav-group') && element.dataset.folderName === folderName
+            );
+            if (!group) break;
+            const header = [...group.children].find(element => element.classList.contains('nav-header'));
+            const content = [...group.children].find(element => element.classList.contains('nav-content'));
+            content?._hydrate?.();
+            content?.classList.add('open');
+            header?.classList.add('active');
+            header?.querySelector('.nav-folder-toggle')?.setAttribute('aria-expanded', 'true');
+            container = content || container;
+            lastGroup = group;
+        }
+        return lastGroup;
+    }
+
     function clearActiveVideoLinks() {
         document.querySelectorAll('.video-link').forEach(link => {
             link.classList.remove('active');
@@ -642,6 +729,7 @@ document.addEventListener('DOMContentLoaded', () => {
             
             const groupDiv = document.createElement('div');
             groupDiv.className = 'nav-group';
+            groupDiv.dataset.folderName = folderName;
 
             const headerBtn = document.createElement('div');
             headerBtn.className = 'nav-header';
@@ -679,13 +767,15 @@ document.addEventListener('DOMContentLoaded', () => {
             
             const fullPath = [...currentPath, folderName];
             
-            // Render subfolders recursively
-            if (Object.keys(node.subfolders).length > 0) {
-                renderFolderLevel(node.subfolders, contentDiv, depth + 1, fullPath);
-            }
+            const hydrateContent = () => {
+                if (contentDiv.dataset.rendered === 'true') return;
 
-            // Render videos in this folder
-            if (node.videos.length > 0) {
+                // Build only the branch the user opens; the other 795 lessons stay out of the startup DOM.
+                if (Object.keys(node.subfolders).length > 0) {
+                    renderFolderLevel(node.subfolders, contentDiv, depth + 1, fullPath);
+                }
+
+                if (node.videos.length > 0) {
                 node.videos.sort(compareVideos);
                 node.videos.forEach(video => {
                     const link = document.createElement('div');
@@ -736,15 +826,24 @@ document.addEventListener('DOMContentLoaded', () => {
                     link.appendChild(mainButton);
                     link.appendChild(starBtn);
                     link.dataset.path = video.path;
+                    if (state.currentVideo?.path === video.path) {
+                        link.classList.add('active');
+                        mainButton.setAttribute('aria-current', 'page');
+                    }
                     mainButton.addEventListener('click', () => loadVideo(video));
                     contentDiv.appendChild(link);
                 });
-            }
+                }
+
+                contentDiv.dataset.rendered = 'true';
+            };
+            contentDiv._hydrate = hydrateContent;
 
             // Expand/Collapse entire row
             folderToggle.addEventListener('click', () => {
                 const isOpen = contentDiv.classList.contains('open');
                 if (!isOpen) {
+                    hydrateContent();
                     contentDiv.classList.add('open');
                     headerBtn.classList.add('active');
                     folderToggle.setAttribute('aria-expanded', 'true');
@@ -768,6 +867,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 
                 // Switch View
+                document.body.dataset.view = 'home';
                 elements.videoView.style.display = 'none';
                 closeNotesView({ restoreFocus: false });
                 elements.homeView.style.display = 'block';
@@ -778,12 +878,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 renderHomeTiles(node, fullPath);
                 setHomeRoute();
                 focusHomeHeading();
-                window.scrollTo({ top: 0, behavior: preferredScrollBehavior() });
+                scrollMainToTop();
                 
                 // Intentionally NOT auto-expanding accordion as per user preference
                 
                 // On mobile, close sidebar after jumping
-                if (window.innerWidth <= 768) {
+                if (usesCompactLayout()) {
                     setSidebarOpen(false, { restoreFocus: false });
                 }
             });
@@ -851,7 +951,6 @@ document.addEventListener('DOMContentLoaded', () => {
         for (const arr of Object.values(allBookmarks)) {
             if (Array.isArray(arr)) total += arr.length;
         }
-        total += state.favorites.size;
         safeStore('notesBadgeSeen', total.toString());
         updateNotesBadge();
     }
@@ -870,6 +969,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Render Breadcrumbs for Home View
         const homeHeader = document.getElementById('home-breadcrumbs');
+        homeHeader.hidden = path.length === 0;
         let breadcrumbHtml = `<a href="#" class="home-crumb" data-level="-1" style="color:var(--accent); text-decoration:none;">Library Home</a>`;
         
         path.forEach((p, idx) => {
@@ -902,6 +1002,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                     renderHomeTiles(targetNode, path.slice(0, level + 1));
                 }
+                scrollMainToTop();
                 focusHomeHeading();
             });
         });
@@ -1001,7 +1102,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 const tile = document.createElement('div');
                 tile.className = 'course-tile fav-tile' + (isRemoved ? ' tile-unfavorited' : '');
-                tile.style.animationDelay = `${favIndex * 0.04}s`;
+                tile.style.animationDelay = `${Math.min(favIndex, 6) * 0.035}s`;
                 tile.style.backgroundColor = 'var(--bg-base)';
                 // Determine dance style for color border
                 const favTopFolder = favPath.split('/')[0];
@@ -1067,7 +1168,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     const tile = document.createElement('div');
                     tile.className = 'course-tile resume-tile';
-                    tile.style.animationDelay = `${tileIndex * 0.04}s`;
+                    tile.style.animationDelay = `${Math.min(tileIndex, 6) * 0.035}s`;
                     tile.style.backgroundColor = 'var(--bg-base)';
 
                     const agoText = entry.lastWatched ? timeAgo(entry.lastWatched) : '';
@@ -1119,7 +1220,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     const card = document.createElement('div');
                     card.className = 'course-tile recent-notes-card';
-                    card.style.animationDelay = `${tileIndex * 0.04}s`;
+                    card.style.animationDelay = `${Math.min(tileIndex, 6) * 0.035}s`;
                     card.style.backgroundColor = 'var(--bg-base)';
 
                     // Video title header (clickable → load video)
@@ -1179,8 +1280,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (numVideos === 0) continue;
 
             const tile = document.createElement('div');
-            tile.className = 'course-tile';
-            tile.style.animationDelay = `${tileIndex * 0.04}s`;
+            tile.className = 'course-tile folder-tile';
+            tile.style.animationDelay = `${Math.min(tileIndex, 6) * 0.035}s`;
             // Style color: at root the folder IS the style, inside a style path[0] is the style
             const tileStyle = path.length === 0 ? fName : path[0];
             const tileColor = styleColors[tileStyle] || styleColors["Other"];
@@ -1215,16 +1316,11 @@ document.addEventListener('DOMContentLoaded', () => {
             `;
             tile.addEventListener('click', () => {
                 renderHomeTiles(node, [...path, fName]);
+                scrollMainToTop();
                 focusHomeHeading();
                 
-                // Keep sidebar in sync - open the accordion for this folder
-                const headers = Array.from(document.querySelectorAll('.nav-header span'));
-                const targetHeader = headers.find(span => span.innerText === fName);
-                if (targetHeader) {
-                    const btn = targetHeader.closest('.nav-header');
-                    if (!btn.classList.contains('active')) btn.querySelector('.nav-folder-toggle')?.click();
-                    btn.scrollIntoView({ behavior: preferredScrollBehavior(), block: 'center' });
-                }
+                const group = revealNavigationPath([...path, fName]);
+                group?.scrollIntoView({ behavior: preferredScrollBehavior(), block: 'center' });
             });
             makeKeyboardAccessible(tile, () => tile.click(), `Open ${fName}, ${numVideos} lessons`);
             elements.courseGrid.appendChild(tile);
@@ -1236,8 +1332,8 @@ document.addEventListener('DOMContentLoaded', () => {
             for (const video of videos) {
                 tileIndex++;
                 const tile = document.createElement('div');
-                tile.className = 'course-tile';
-            tile.style.animationDelay = `${tileIndex * 0.04}s`;
+                tile.className = 'course-tile lesson-tile';
+            tile.style.animationDelay = `${Math.min(tileIndex, 6) * 0.035}s`;
                 tile.style.backgroundColor = 'var(--bg-base)';
                 const vidStyle = path[0] || 'Other';
                 const vidColor = styleColors[vidStyle] || styleColors["Other"];
@@ -1274,6 +1370,118 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
                 elements.courseGrid.appendChild(tile);
             }
+        }
+    }
+
+    const summaryChunkPromises = new Map();
+
+    function getSummaryRegistry() {
+        if (!isRecord(globalThis.DanceLibrarySummaries)) globalThis.DanceLibrarySummaries = {};
+        return globalThis.DanceLibrarySummaries;
+    }
+
+    function ensureSummaryChunk(chunkId) {
+        if (!/^[a-z0-9-]+$/.test(chunkId || '')) {
+            return Promise.reject(new Error('Invalid summary chunk identifier.'));
+        }
+
+        const registry = getSummaryRegistry();
+        if (isRecord(registry[chunkId])) return Promise.resolve(registry[chunkId]);
+        if (summaryChunkPromises.has(chunkId)) return summaryChunkPromises.get(chunkId);
+
+        const promise = new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.async = true;
+            const chunkUrl = new URL(`summaries/${chunkId}.js`, document.baseURI);
+            chunkUrl.searchParams.set('v', String(SUMMARY_ASSET_VERSION));
+            script.src = chunkUrl.href;
+            script.dataset.summaryChunk = chunkId;
+            script.addEventListener('load', () => {
+                script.remove();
+                const chunk = getSummaryRegistry()[chunkId];
+                if (!isRecord(chunk)) {
+                    reject(new Error(`Summary chunk ${chunkId} did not register its lessons.`));
+                    return;
+                }
+                resolve(chunk);
+            }, { once: true });
+            script.addEventListener('error', () => {
+                script.remove();
+                reject(new Error(`Summary chunk ${chunkId} could not be loaded.`));
+            }, { once: true });
+            document.head.appendChild(script);
+        }).catch(error => {
+            summaryChunkPromises.delete(chunkId);
+            throw error;
+        });
+
+        summaryChunkPromises.set(chunkId, promise);
+        return promise;
+    }
+
+    async function ensureSummaryForVideo(videoObj) {
+        if (typeof videoObj.summary === 'string') return videoObj.summary;
+        const catalogInfo = videoData[videoObj.path];
+        if (!catalogInfo?.summary_chunk) return '';
+        const chunk = await ensureSummaryChunk(catalogInfo.summary_chunk);
+        const summary = typeof chunk[videoObj.path] === 'string' ? chunk[videoObj.path] : '';
+        videoObj.summary = summary;
+        catalogInfo.summary = summary;
+        return summary;
+    }
+
+    async function ensureAllSummaries() {
+        const chunkIds = [...new Set(Object.values(videoData).map(info => info.summary_chunk).filter(Boolean))];
+        const chunks = await Promise.all(chunkIds.map(ensureSummaryChunk));
+        for (const chunk of chunks) {
+            for (const [lessonPath, summary] of Object.entries(chunk)) {
+                if (videoData[lessonPath] && typeof summary === 'string') videoData[lessonPath].summary = summary;
+            }
+        }
+    }
+
+    function buildCourseSummaryLead(videoObj) {
+        if (typeof salsaCourseData === 'undefined' || !videoObj.path?.startsWith('Salsa Masterclass/')) return '';
+        const videoParts = videoObj.path.split('/');
+        videoParts.pop();
+        const courseInfo = salsaCourseData.folders[videoParts.join('/')];
+        if (!courseInfo) return '';
+
+        let html = '<div class="course-video-desc">';
+        html += `<p>${escapeHtml(courseInfo.description)}</p>`;
+        if (courseInfo.tips) html += `<p class="course-tips"><strong>Tips:</strong> ${escapeHtml(courseInfo.tips)}</p>`;
+        if (courseInfo.song) html += `<p class="course-song">&#9835; ${escapeHtml(courseInfo.song)}</p>`;
+        if (courseInfo.prerequisites) {
+            html += '<div class="course-prereqs">';
+            if (courseInfo.prerequisites.on1) {
+                html += '<div class="course-prereq-col"><strong>On1:</strong><ul>'
+                    + courseInfo.prerequisites.on1.map(item => `<li>${escapeHtml(item)}</li>`).join('') + '</ul></div>';
+            }
+            if (courseInfo.prerequisites.on2) {
+                html += '<div class="course-prereq-col"><strong>On2:</strong><ul>'
+                    + courseInfo.prerequisites.on2.map(item => `<li>${escapeHtml(item)}</li>`).join('') + '</ul></div>';
+            }
+            html += '</div>';
+        }
+        return `${html}</div>`;
+    }
+
+    async function renderVideoSummary(videoObj) {
+        const courseLead = buildCourseSummaryLead(videoObj);
+        elements.videoSummary.innerHTML = `${courseLead}<div class="summary-loading" role="status"><span class="summary-loading-dot" aria-hidden="true"></span>Loading lesson analysis…</div>`;
+
+        try {
+            const summary = await ensureSummaryForVideo(videoObj);
+            if (state.currentVideo?.path !== videoObj.path) return;
+            const analysis = parseMarkdown(summary);
+            elements.videoSummary.innerHTML = courseLead && summary
+                ? `${courseLead}<details class="ai-summary-details" open><summary class="ai-summary-toggle">Lesson analysis</summary><div class="ai-summary-content">${analysis}</div></details>`
+                : `${courseLead}${analysis}`;
+        } catch (error) {
+            console.warn('Could not load lesson analysis:', error);
+            if (state.currentVideo?.path !== videoObj.path) return;
+            elements.videoSummary.innerHTML = `${courseLead}<div class="summary-error" role="alert"><p>The lesson analysis is unavailable right now.</p><button type="button" class="summary-retry-btn">Try again</button></div>`;
+            elements.videoSummary.querySelector('.summary-retry-btn')?.addEventListener('click', () => renderVideoSummary(videoObj));
         }
     }
 
@@ -1334,6 +1542,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         elements.homeView.style.display = 'none';
         closeNotesView({ restoreFocus: false });
+        document.body.dataset.view = 'video';
         elements.videoView.style.display = 'flex';
 
         // Update URL/Video Source
@@ -1342,35 +1551,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Update Info
         elements.videoTitle.innerText = videoObj.title;
 
-        // Build summary with course description for Salsa Masterclass videos
-        let summaryHtml = '';
-        if (typeof salsaCourseData !== 'undefined' && videoObj.path && videoObj.path.startsWith('Salsa Masterclass/')) {
-            const videoParts = videoObj.path.split('/');
-            videoParts.pop(); // remove filename
-            const folderKey = videoParts.join('/');
-            const courseInfo = salsaCourseData.folders[folderKey];
-            if (courseInfo) {
-                summaryHtml += '<div class="course-video-desc">';
-                summaryHtml += `<p>${courseInfo.description}</p>`;
-                if (courseInfo.tips) summaryHtml += `<p class="course-tips"><strong>Tips:</strong> ${courseInfo.tips}</p>`;
-                if (courseInfo.song) summaryHtml += `<p class="course-song">&#9835; ${courseInfo.song}</p>`;
-                if (courseInfo.prerequisites) {
-                    summaryHtml += '<div class="course-prereqs">';
-                    if (courseInfo.prerequisites.on1) summaryHtml += '<div class="course-prereq-col"><strong>On1:</strong><ul>' + courseInfo.prerequisites.on1.map(p => `<li>${p}</li>`).join('') + '</ul></div>';
-                    if (courseInfo.prerequisites.on2) summaryHtml += '<div class="course-prereq-col"><strong>On2:</strong><ul>' + courseInfo.prerequisites.on2.map(p => `<li>${p}</li>`).join('') + '</ul></div>';
-                    summaryHtml += '</div>';
-                }
-                summaryHtml += '</div>';
-            }
-        }
-        // AI summary (collapsible if course description exists)
-        const aiContent = parseMarkdown(videoObj.summary);
-        if (summaryHtml && videoObj.summary) {
-            summaryHtml += '<details class="ai-summary-details" open><summary class="ai-summary-toggle">AI Analysis</summary><div class="ai-summary-content">' + aiContent + '</div></details>';
-        } else {
-            summaryHtml += aiContent;
-        }
-        elements.videoSummary.innerHTML = summaryHtml;
+        renderVideoSummary(videoObj);
 
         // Update favorite star
         updateFavBtn();
@@ -1415,6 +1596,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 pauseVideoPlayback({ destroyStream: true });
                 
                 // Switch Views
+                document.body.dataset.view = 'home';
                 elements.videoView.style.display = 'none';
                 closeNotesView({ restoreFocus: false });
                 elements.homeView.style.display = 'block';
@@ -1444,12 +1626,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 focusHomeHeading();
                 setHomeRoute();
                 
-                window.scrollTo({ top: 0, behavior: preferredScrollBehavior() });
+                scrollMainToTop();
             });
             
             link.addEventListener('mouseover', e => e.target.style.color = 'var(--accent)');
             link.addEventListener('mouseout', e => e.target.style.color = 'var(--text-main)');
         });
+
+        // Hydrate only the active lesson's branch before syncing sidebar state.
+        // Direct links and home tiles can open a lesson before its lazy nav branch exists.
+        revealNavigationPath([rootStyle, ...pathParts]);
 
         // Highlight Active Link
         clearActiveVideoLinks();
@@ -1475,18 +1661,22 @@ document.addEventListener('DOMContentLoaded', () => {
         requestAnimationFrame(() => elements.videoTitle.focus({ preventScroll: true }));
 
         // Mobile: close sidebar
-        if (window.innerWidth <= 768) {
+        if (usesCompactLayout()) {
             setSidebarOpen(false, { restoreFocus: false });
         }
     }
 
 
     // Switch between Local and Bunny
-    function updateVideoSource() {
+    let videoSourceRequest = 0;
+
+    async function updateVideoSource() {
         if (!state.currentVideo) return;
-        
+
+        const requestId = ++videoSourceRequest;
+        const requestedVideo = state.currentVideo;
         const video = elements.videoPlayer;
-        
+
         // Clean up previous HLS instance if it exists
         if (hls) {
             hls.destroy();
@@ -1497,27 +1687,41 @@ document.addEventListener('DOMContentLoaded', () => {
         video.load();
 
         function playLocalFile() {
-            video.src = encodeURI(state.currentVideo.path);
-            video.play().catch(e => console.log("Autoplay prevented:", e));
+            if (requestId !== videoSourceRequest) return;
+            video.src = encodeURI(requestedVideo.path);
+            video.play().catch(() => {});
         }
-        
+
         const useCDN = !canUseLocalMedia || state.useBunny;
-        if (useCDN && state.currentVideo.bunny_id && state.bunnyPullZone) {
+        if (useCDN && requestedVideo.bunny_id && state.bunnyPullZone) {
             // Clean pull zone hostname (remove https:// or trailing slashes if user pasted them)
             let host = state.bunnyPullZone.replace('https://', '').replace('http://', '').split('/')[0];
-            const streamUrl = `https://${host}/${state.currentVideo.bunny_id}/playlist.m3u8`;
-            
-            if (typeof Hls !== 'undefined' && Hls.isSupported()) {
-                hls = new Hls();
+            const streamUrl = `https://${host}/${requestedVideo.bunny_id}/playlist.m3u8`;
+
+            if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                video.src = streamUrl;
+                video.addEventListener('loadedmetadata', function() {
+                    if (requestId === videoSourceRequest) video.play().catch(() => {});
+                }, { once: true });
+                return;
+            }
+
+            try {
+                const HlsRuntime = await ensureHlsRuntime();
+                if (requestId !== videoSourceRequest || state.currentVideo?.path !== requestedVideo.path) return;
+                if (!HlsRuntime.isSupported()) throw new Error('HLS playback is not supported in this browser.');
+
+                hls = new HlsRuntime();
                 hls.loadSource(streamUrl);
                 hls.attachMedia(video);
-                hls.on(Hls.Events.MANIFEST_PARSED, function() {
-                    video.play().catch(e => console.log("Autoplay prevented:", e));
+                hls.on(HlsRuntime.Events.MANIFEST_PARSED, function() {
+                    if (requestId === videoSourceRequest) video.play().catch(() => {});
                 });
-                hls.on(Hls.Events.ERROR, function(event, data) {
+                hls.on(HlsRuntime.Events.ERROR, function(event, data) {
                     if (data.fatal) {
                         hls.destroy();
                         hls = null;
+                        if (requestId !== videoSourceRequest) return;
                         if (canUseLocalMedia) {
                             showToast('Stream error — trying the local file.', 5000, true);
                             playLocalFile();
@@ -1526,13 +1730,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                     }
                 });
-            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-                // Native Safari support
-                video.src = streamUrl;
-                video.addEventListener('loadedmetadata', function() {
-                    video.play().catch(e => console.log("Autoplay prevented:", e));
-                }, { once: true });
-            } else {
+            } catch (error) {
+                console.warn('Streaming runtime unavailable:', error);
+                if (requestId !== videoSourceRequest) return;
                 if (canUseLocalMedia) {
                     showToast('Streaming is unavailable — trying the local file.', 5000, true);
                     playLocalFile();
@@ -1660,44 +1860,68 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Parse Markdown & Add Clickable Timestamps
     function parseMarkdown(text) {
-        if (!text) return "<em>No summary available for this lesson.</em>";
-        
-        let html = text
-            // Bold
-            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-            // Timestamps: [MM:SS]
-            .replace(/\[(\d{2}:\d{2})\]/g, (match, timeStr) => {
-                const parts = timeStr.split(':');
-                const totalSeconds = parseInt(parts[0]) * 60 + parseInt(parts[1]);
-                return `<button type="button" class="timestamp-pill" data-time="${totalSeconds}" aria-label="Jump to ${timeStr}">${match}</button>`;
-            });
+        if (!text) return '<p class="summary-empty"><em>No analysis is available for this lesson.</em></p>';
 
-        // Split by dashes for bullet points
-        const lines = html.split('\n').filter(l => l.trim().length > 0);
-        let listHtml = '<ul>';
-        lines.forEach(line => {
-            if (line.trim().startsWith('- ')) {
-                listHtml += `<li>${line.replace(/^- /, '')}</li>`;
-            } else {
-                listHtml += `<p>${line}</p>`;
+        const chapters = [];
+        const paragraphs = [];
+        const lines = String(text).split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+
+        for (const rawLine of lines) {
+            const timestamp = rawLine.match(/\[(\d{1,2}):(\d{2})\]/);
+            if (!timestamp) {
+                paragraphs.push(rawLine.replace(/^\s*-\s*/, ''));
+                continue;
             }
-        });
-        listHtml += '</ul>';
 
-        return listHtml;
+            const minutes = Number(timestamp[1]);
+            const seconds = Number(timestamp[2]);
+            if (!Number.isFinite(minutes) || seconds > 59) {
+                paragraphs.push(rawLine.replace(/^\s*-\s*/, ''));
+                continue;
+            }
+
+            let remainder = rawLine.slice(timestamp.index + timestamp[0].length)
+                .replace(/^\*{0,2}\s*-?\s*/, '')
+                .replace(/\*\*/g, '')
+                .trim();
+            const separator = remainder.indexOf(':');
+            const title = (separator >= 0 ? remainder.slice(0, separator) : remainder).trim() || 'Lesson note';
+            const description = (separator >= 0 ? remainder.slice(separator + 1) : '').trim();
+            chapters.push({
+                timeLabel: `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`,
+                totalSeconds: (minutes * 60) + seconds,
+                title,
+                description
+            });
+        }
+
+        const renderInline = value => escapeHtml(value).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+        let html = '<div class="summary-content">';
+
+        if (paragraphs.length) {
+            html += `<div class="summary-intro">${paragraphs.map(line => `<p>${renderInline(line)}</p>`).join('')}</div>`;
+        }
+
+        if (chapters.length) {
+            const openByDefault = usesCompactLayout() ? '' : ' open';
+            html += '<ol class="lesson-chapters">';
+            for (const chapter of chapters) {
+                html += `<li class="lesson-chapter">
+                    <button type="button" class="timestamp-pill" data-time="${chapter.totalSeconds}" aria-label="Jump to ${chapter.timeLabel}">${chapter.timeLabel}</button>
+                    <details class="chapter-details"${openByDefault}>
+                        <summary><span class="chapter-title">${renderInline(chapter.title)}</span></summary>
+                        ${chapter.description ? `<p class="chapter-description">${renderInline(chapter.description)}</p>` : ''}
+                    </details>
+                </li>`;
+            }
+            html += '</ol>';
+        }
+
+        return `${html}</div>`;
     }
 
     // Event Listeners
     function setupEventListeners() {
-        const hlsRuntime = document.getElementById('hls-runtime');
-        if (hlsRuntime) {
-            hlsRuntime.addEventListener('load', () => {
-                if (state.currentVideo && typeof Hls !== 'undefined' && !hls && !elements.videoPlayer.currentSrc) {
-                    updateVideoSource();
-                }
-            });
-        }
-
         // Prev/Next Video Navigation
         elements.prevBtn.addEventListener('click', () => {
             if (state.playlist && state.playlistIndex > 0) {
@@ -1740,7 +1964,7 @@ document.addEventListener('DOMContentLoaded', () => {
             el.style.cursor = 'pointer';
             el.addEventListener('click', () => {
                 goHome();
-                if (window.innerWidth <= 768) {
+                if (usesCompactLayout()) {
                     setSidebarOpen(false, { restoreFocus: false });
                 }
             });
@@ -1752,7 +1976,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (homeSidebarBtn) {
             homeSidebarBtn.addEventListener('click', () => {
                 goHome();
-                if (window.innerWidth <= 768) {
+                if (usesCompactLayout()) {
                     setSidebarOpen(false, { restoreFocus: false });
                 }
             });
@@ -1765,7 +1989,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 // Native HTML5 Video skipping works for both Local & HLS stream!
                 elements.videoPlayer.currentTime = time;
-                elements.videoPlayer.play();
+                elements.videoPlayer.play().catch(() => {});
                 
                 // Scroll up centered towards the video player
                 const wrapper = document.getElementById('video-sticky-wrapper');
@@ -1859,7 +2083,8 @@ document.addEventListener('DOMContentLoaded', () => {
             sidebarSearchTimeout = setTimeout(() => { sidebarSearchFilter(e.target.value); }, 150);
         });
         function sidebarSearchFilter(val) {
-            const query = val.toLowerCase();
+            const query = val.trim().toLowerCase();
+            if (query) hydrateNavigationTree();
             document.querySelectorAll('.nav-group').forEach(group => {
                 let hasVisibleMatch = false;
                 
@@ -1870,15 +2095,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 const links = group.querySelectorAll('.video-link');
                 links.forEach(link => {
                     const isMatch = link.innerText.toLowerCase().includes(query);
-                    link.style.display = isMatch ? 'block' : 'none';
+                    link.hidden = !isMatch;
                     if (isMatch) hasVisibleMatch = true;
                 });
 
                 if (headerText.includes(query) || hasVisibleMatch) {
-                    group.style.display = 'block';
+                    group.hidden = false;
                     hasVisibleMatch = true;
                 } else {
-                    group.style.display = 'none';
+                    group.hidden = true;
                 }
                 
                 // Auto-open accordion if there is a search match
@@ -1909,7 +2134,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // Close sidebar when clicking outside on mobile
         document.addEventListener('click', (e) => {
-            if (window.innerWidth <= 768) {
+            if (usesCompactLayout()) {
                 if (elements.sidebar.classList.contains('open') && 
                     !elements.sidebar.contains(e.target) && 
                     (elements.menuToggle && !elements.menuToggle.contains(e.target)) &&
@@ -1918,7 +2143,35 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
         });
-        window.addEventListener('resize', () => syncSidebarAccessibility());
+
+        document.addEventListener('keydown', event => {
+            if (event.key !== 'Tab' || !usesCompactLayout() || !sidebarIsOpen() || hasOpenDialog()) return;
+            const focusables = [...elements.sidebar.querySelectorAll(
+                'a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'
+            )].filter(element => element instanceof HTMLElement && element.offsetParent !== null);
+            if (!focusables.length) return;
+            const first = focusables[0];
+            const last = focusables[focusables.length - 1];
+            if (event.shiftKey && document.activeElement === first) {
+                event.preventDefault();
+                last.focus();
+            } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first.focus();
+            }
+        });
+
+        const handleLayoutBreakpointChange = () => {
+            elements.sidebar.classList.remove('open');
+            document.body.classList.remove('sidebar-open');
+            document.body.classList.remove('sidebar-closed');
+            syncSidebarAccessibility();
+        };
+        if (typeof compactLayoutQuery.addEventListener === 'function') {
+            compactLayoutQuery.addEventListener('change', handleLayoutBreakpointChange);
+        } else {
+            compactLayoutQuery.addListener(handleLayoutBreakpointChange);
+        }
 
         // Collapse All Folders
         if (elements.collapseAllBtn) {
@@ -2130,9 +2383,80 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    function parseCssColor(value) {
+        const color = String(value || '').trim();
+        const hex = color.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+        if (hex) {
+            const normalized = hex[1].length === 3
+                ? [...hex[1]].map(character => character + character).join('')
+                : hex[1];
+            return [0, 2, 4].map(index => parseInt(normalized.slice(index, index + 2), 16));
+        }
+        const rgb = color.match(/^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)/i);
+        return rgb ? [Number(rgb[1]), Number(rgb[2]), Number(rgb[3])] : null;
+    }
+
+    function relativeLuminance(rgb) {
+        const channels = rgb.map(value => {
+            const channel = value / 255;
+            return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+        });
+        return (0.2126 * channels[0]) + (0.7152 * channels[1]) + (0.0722 * channels[2]);
+    }
+
+    function contrastRatio(first, second) {
+        if (!first || !second) return 21;
+        const a = relativeLuminance(first);
+        const b = relativeLuminance(second);
+        return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+    }
+
+    function enforceThemeContrast() {
+        const inline = document.body.style;
+        for (const property of ['--text-muted', '--pill-text', '--focus-ring']) inline.removeProperty(property);
+        const computed = getComputedStyle(document.body);
+        const baseValue = computed.getPropertyValue('--bg-base').trim();
+        const surfaceValue = computed.getPropertyValue('--bg-surface').trim();
+        const mainValue = computed.getPropertyValue('--text-main').trim();
+        const mutedValue = computed.getPropertyValue('--text-muted').trim();
+        const accentValue = computed.getPropertyValue('--accent').trim();
+        const pillValue = computed.getPropertyValue('--pill-text').trim();
+        const base = parseCssColor(baseValue);
+        const surface = parseCssColor(surfaceValue);
+        const main = parseCssColor(mainValue);
+        const muted = parseCssColor(mutedValue);
+        const accent = parseCssColor(accentValue);
+        const pill = parseCssColor(pillValue);
+        const readableCandidates = [
+            { value: mainValue, rgb: main },
+            { value: '#000', rgb: [0, 0, 0] },
+            { value: '#fff', rgb: [255, 255, 255] }
+        ];
+        const readable = readableCandidates.sort((a, b) =>
+            Math.min(contrastRatio(b.rgb, base), contrastRatio(b.rgb, surface))
+            - Math.min(contrastRatio(a.rgb, base), contrastRatio(a.rgb, surface))
+        )[0];
+
+        if (Math.min(contrastRatio(muted, base), contrastRatio(muted, surface)) < 4.5) {
+            inline.setProperty('--text-muted', readable.value);
+        }
+
+        const focusColor = Math.min(contrastRatio(accent, base), contrastRatio(accent, surface)) >= 3
+            ? accentValue
+            : readable.value;
+        inline.setProperty('--focus-ring', focusColor);
+
+        if (contrastRatio(accent, pill) < 4.5) {
+            const black = [0, 0, 0];
+            const white = [255, 255, 255];
+            inline.setProperty('--pill-text', contrastRatio(accent, white) >= contrastRatio(accent, black) ? '#fff' : '#000');
+        }
+    }
+
     function applyTheme(themeName) {
         document.documentElement.setAttribute('data-theme', themeName);
         document.body.setAttribute('data-theme', themeName);
+        enforceThemeContrast();
         safeStore('theme', themeName);
         const themeColor = document.querySelector('meta[name="theme-color"]');
         if (themeColor) themeColor.content = getComputedStyle(document.body).getPropertyValue('--bg-base').trim() || '#fdf6e3';
@@ -2201,7 +2525,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Export logic
-    document.getElementById('do-export').addEventListener('click', () => {
+    document.getElementById('do-export').addEventListener('click', async (event) => {
         const includeBookmarks = document.getElementById('exp-bookmarks').checked;
         const includeFavorites = document.getElementById('exp-favorites').checked;
         const includeSummaries = document.getElementById('exp-summaries').checked;
@@ -2209,6 +2533,26 @@ document.addEventListener('DOMContentLoaded', () => {
         const expandToLibrary = document.getElementById('exp-entire-library').checked;
         const currentVideoOnly = exportContext === 'video' && !expandToLibrary;
         const format = document.querySelector('input[name="export-format"]:checked').value;
+
+        if (includeSummaries) {
+            const exportButton = event.currentTarget;
+            const originalLabel = exportButton.textContent;
+            exportButton.disabled = true;
+            exportButton.setAttribute('aria-busy', 'true');
+            exportButton.textContent = currentVideoOnly ? 'Loading analysis…' : 'Loading all analyses…';
+            try {
+                if (currentVideoOnly && state.currentVideo) await ensureSummaryForVideo(state.currentVideo);
+                else await ensureAllSummaries();
+            } catch (error) {
+                console.warn('Could not prepare summaries for export:', error);
+                showToast('Summaries could not be loaded. Check your connection and try again.', 6000, true);
+                return;
+            } finally {
+                exportButton.disabled = false;
+                exportButton.removeAttribute('aria-busy');
+                exportButton.textContent = originalLabel;
+            }
+        }
 
         const date = new Date().toISOString().slice(0, 10);
 
@@ -2439,6 +2783,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     safeStore('videoLastWatched', JSON.stringify(state.lastWatched));
                 }
 
+                if (typeof data.theme === 'string' && [...elements.themeSelect.options].some(option => option.value === data.theme)) {
+                    state.theme = data.theme;
+                    elements.themeSelect.value = data.theme;
+                    safeStore('theme', data.theme);
+                    applyTheme(data.theme);
+                }
+
                 renderNavigation();
                 renderHomeTiles(null, []);
                 if (state.currentVideo) renderBookmarks();
@@ -2465,7 +2816,7 @@ document.addEventListener('DOMContentLoaded', () => {
         state.loopA = null;
         state.loopB = null;
         const btn = elements.abLoopBtn;
-        btn.textContent = 'A';
+        btn.textContent = 'A–B';
         btn.className = 'overlay-btn';
         btn.title = 'A-B Loop: set start [ set end ] clear Esc';
         btn.setAttribute('aria-pressed', 'false');
@@ -3071,7 +3422,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Notes button in sidebar
     document.getElementById('notes-sidebar-btn').addEventListener('click', () => {
         showNotesView();
-        if (window.innerWidth <= 768) {
+        if (usesCompactLayout()) {
             setSidebarOpen(false, { restoreFocus: false });
         }
     });
@@ -3133,9 +3484,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const searchStr = (title + ' ' + parts.slice(0, -1).join(' ')).toLowerCase();
 
             if (searchStr.includes(q)) {
-                matches.push({ title, path, folderPath: parts.slice(0, -1).join(' / '), info });
+                const normalizedTitle = title.toLowerCase();
+                const score = normalizedTitle.startsWith(q) ? 0 : normalizedTitle.includes(q) ? 1 : 2;
+                matches.push({ title, path, folderPath: parts.slice(0, -1).join(' / '), info, score });
             }
-            if (matches.length >= 12) break;
         }
 
         if (matches.length === 0) {
@@ -3143,8 +3495,8 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        matches.sort((a, b) => compareNatural(a.title, b.title));
-        matches.forEach((m, i) => {
+        matches.sort((a, b) => a.score - b.score || compareNatural(a.title, b.title));
+        matches.slice(0, 20).forEach((m, i) => {
             const result = document.createElement('button');
             result.type = 'button';
             result.id = `spotlight-result-${i}`;
@@ -3207,8 +3559,10 @@ document.addEventListener('DOMContentLoaded', () => {
     spotlightOverlay.addEventListener('click', (e) => {
         if (e.target === spotlightOverlay) closeSpotlight();
     });
+    document.getElementById('close-spotlight')?.addEventListener('click', () => closeSpotlight());
     const homeSearchBtn = document.getElementById('home-search-btn');
     if (homeSearchBtn) homeSearchBtn.addEventListener('click', openSpotlight);
+    document.getElementById('mobile-search-btn')?.addEventListener('click', openSpotlight);
 
     // ── Shortcuts Overlay ────────────────────────────────
     const shortcutsOverlay = document.getElementById('shortcuts-overlay');
@@ -3233,7 +3587,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const openHelpModal = () => {
         pauseVideoPlayback();
         helpModal.style.display = 'flex';
-        if (window.innerWidth <= 768) {
+        if (usesCompactLayout()) {
             setSidebarOpen(false, { restoreFocus: false });
         }
     };
@@ -3508,7 +3862,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // ── Web Share (mobile native share sheet) ──────────
     const shareBtn = document.getElementById('share-btn');
     if (navigator.share) {
-        shareBtn.style.display = '';
+        shareBtn.hidden = false;
         shareBtn.addEventListener('click', () => {
             if (!state.currentVideo) return;
             const title = state.currentVideo.title;
@@ -3618,7 +3972,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 return;
             }
-            if (window.innerWidth <= 768 && sidebarIsOpen()) { setSidebarOpen(false); return; }
+            if (usesCompactLayout() && sidebarIsOpen()) { setSidebarOpen(false); return; }
             if (theaterMode) { toggleTheater(); return; }
             if (state.loopA !== null || state.loopB !== null) clearABLoop();
             return;

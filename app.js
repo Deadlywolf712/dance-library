@@ -37,7 +37,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const canUseLocalMedia = location.protocol === 'file:' || ['localhost', '127.0.0.1', '::1'].includes(location.hostname);
     const HLS_RUNTIME_URL = 'https://cdn.jsdelivr.net/npm/hls.js@1.6.16/dist/hls.min.js';
     const HLS_RUNTIME_INTEGRITY = 'sha384-5E8B0pTlZZJMabWpC0fyYf6OUpe15jJij34BqBAh4NXoHAlLNOjCPRrwtOXOQFAn';
-    const SUMMARY_ASSET_VERSION = 9;
+    const SUMMARY_ASSET_VERSION = 10;
     const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
     const preferredScrollBehavior = () => reducedMotionQuery.matches ? 'auto' : 'smooth';
 
@@ -197,7 +197,7 @@ document.addEventListener('DOMContentLoaded', () => {
         currentVideo: null,
         watched: new Set(safeLoad('watchedVideos', [], Array.isArray)),
         useBunny: isHosted || checkIsMobile() ? true : (safeGet('useBunny', 'false') === 'true'),
-        theme: safeGet('theme', 'solarized-light'),
+        theme: safeGet('theme', 'arctic'),
         bunnyPullZone: safeGet('bunny_pull_zone', typeof BUNNY_PULL_ZONE !== 'undefined' ? BUNNY_PULL_ZONE : ''),
         loopA: null,
         loopB: null,
@@ -314,7 +314,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.body.dataset.view = 'home';
         parseDataToTree();
         const knownThemes = new Set([...elements.themeSelect.options].map(option => option.value));
-        if (!knownThemes.has(state.theme)) state.theme = 'solarized-light';
+        if (!knownThemes.has(state.theme)) state.theme = 'arctic';
         applyTheme(state.theme);
         renderNavigation();
         renderHomeTiles(); // start at root
@@ -2459,7 +2459,7 @@ document.addEventListener('DOMContentLoaded', () => {
         enforceThemeContrast();
         safeStore('theme', themeName);
         const themeColor = document.querySelector('meta[name="theme-color"]');
-        if (themeColor) themeColor.content = getComputedStyle(document.body).getPropertyValue('--bg-base').trim() || '#fdf6e3';
+        if (themeColor) themeColor.content = getComputedStyle(document.body).getPropertyValue('--bg-base').trim() || '#e8ecf0';
     }
 
     // ── Export / Import ───────────────────────────────────
@@ -2589,7 +2589,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     data.summaries = summaries;
                 }
             }
-            data.theme = safeGet('theme', 'solarized-light');
+            data.theme = safeGet('theme', 'arctic');
 
             downloadFile(`dance-library-${date}.json`, JSON.stringify(data, null, 2), 'application/json');
         } else {

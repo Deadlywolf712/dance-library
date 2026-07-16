@@ -1,8 +1,8 @@
 :root {
-  /* Solarized Light (default) */
-  --bg-base: #fdf6e3; --bg-surface: #eee8d5; --bg-surface-hover: #ded7c3;
-  --text-main: #3d5158; --text-muted: #53666d; --accent: #9f3510;
-  --border-light: rgba(0,0,0,0.15); --pill-text: #fdf6e3;
+  /* Arctic (default) */
+  --bg-base: #e8ecf0; --bg-surface: #dde2e8; --bg-surface-hover: #cdd4dc;
+  --text-main: #2c3e50; --text-muted: #7f8c9b; --accent: #3498db;
+  --border-light: rgba(0,0,0,0.1); --pill-text: #e8ecf0;
   --font-main: 'Outfit', -apple-system, sans-serif;
   --font-display: 'Playfair Display', serif;
   --sidebar-width: 320px;

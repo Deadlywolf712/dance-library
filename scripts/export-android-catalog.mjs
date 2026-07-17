@@ -67,6 +67,10 @@ function readUtf8Strict(filename) {
   return source;
 }
 
+function canonicalSourceForHash(source) {
+  return source.replace(/\r\n?/g, '\n');
+}
+
 function parseJson(filename) {
   const source = readUtf8Strict(filename);
   try {
@@ -241,7 +245,11 @@ assert(manifest.summaryCount === EXPECTED_LESSONS, `Summary manifest summaryCoun
 assert(Array.isArray(manifest.chunks) && manifest.chunks.length === EXPECTED_CHUNKS, `Expected ${EXPECTED_CHUNKS} summary chunks.`);
 
 const inputHasher = crypto.createHash('sha256');
-inputHasher.update('data.js\0').update(dataSource).update('\0summaries/manifest.json\0').update(readUtf8Strict(manifestPath));
+inputHasher
+  .update('data.js\0')
+  .update(canonicalSourceForHash(dataSource))
+  .update('\0summaries/manifest.json\0')
+  .update(canonicalSourceForHash(readUtf8Strict(manifestPath)));
 const summaries = new Map();
 
 for (const chunk of [...manifest.chunks].sort((a, b) => compareCodePoints(a.id, b.id))) {
@@ -253,7 +261,9 @@ for (const chunk of [...manifest.chunks].sort((a, b) => compareCodePoints(a.id, 
   const parsed = parseSummaryChunk(filename, chunk.id);
   const chunkEntries = Object.entries(parsed.summaries);
   assert(chunkEntries.length === chunk.lessons, `${chunk.id} contains ${chunkEntries.length} summaries, expected ${chunk.lessons}.`);
-  inputHasher.update(`\0summaries/${chunk.file}\0`).update(parsed.source);
+  inputHasher
+    .update(`\0summaries/${chunk.file}\0`)
+    .update(canonicalSourceForHash(parsed.source));
 
   for (const [legacyPath, rawMarkdown] of chunkEntries) {
     assert(!summaries.has(legacyPath), `Duplicate summary: ${legacyPath}`);

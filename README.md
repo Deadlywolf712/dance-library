@@ -17,11 +17,13 @@ Then open `http://127.0.0.1:4176/`.
 - `index.html` — static app shell and dialogs
 - `style.css` — themes, components, and responsive layouts
 - `app.js` — catalog navigation, player, storage, dialogs, and hash routing
+- `playback-core.js` — tested resume and seek safety helpers
 - `data.js` — compact lesson metadata needed at startup
 - `summaries/` — lesson-analysis chunks loaded only when a lesson is opened
 - `salsa_course.js` — Salsa Masterclass course metadata
 - `sw.js` — offline shell and runtime asset cache
 - `scripts/validate-site.mjs` — deterministic pre-deploy checks
+- `tests/mobile-playback.spec.mjs` — mobile playback, resume, recovery, and source-race tests
 - `scripts/split-catalog.mjs` — repeatable catalog/summary splitter
 
 The app uses relative URLs and `#video=...` routes so it works from the `/dance-library/` GitHub Pages project path without a framework or build step.
@@ -29,12 +31,12 @@ The app uses relative URLs and `#video=...` routes so it works from the `/dance-
 ## Validate a release
 
 ```sh
-node --check app.js
-node --check sw.js
-node scripts/validate-site.mjs
+npm install
+npx playwright install chromium
+npm test
 ```
 
-The validator checks the complete lesson and summary inventory, duplicate HTML IDs, relative Pages assets, PWA scope, cache-version alignment, HLS pinning/integrity, and accessible contrast correction for every theme.
+The release gate checks the complete lesson and summary inventory, duplicate HTML IDs, relative Pages assets, PWA scope, cache-version alignment, HLS pinning/integrity, accessible contrast correction for every theme, and continuous playback in a mobile browser. Playback tests also cover valid and stale resume positions, rapid lesson changes, stale HLS callbacks, and bounded media recovery.
 
 When a full catalog containing inline `summary` fields is available in `data.js`, regenerate the compact catalog and lazy chunks with:
 

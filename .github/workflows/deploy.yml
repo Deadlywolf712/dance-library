@@ -18,11 +18,19 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22
+          cache: npm
+      - name: Install test dependencies
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
       - name: Validate static site
         run: |
           node --check app.js
+          node --check playback-core.js
           node --check sw.js
           node scripts/validate-site.mjs
+          node scripts/validate-playback.mjs
+          npm run test:playback
 
   deploy:
     if: github.event_name != 'pull_request'

@@ -1218,6 +1218,34 @@ body.sidebar-closed #mobile-header {
   border: 1px solid rgba(255,255,255,0.08);
 }
 
+.video-retry-btn {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 16;
+  min-height: 44px;
+  padding: 11px 18px;
+  border: 1px solid rgba(255, 255, 255, 0.32);
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.92);
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+
+.video-retry-btn:hover,
+.video-retry-btn:focus-visible {
+  background: #111c30;
+  border-color: rgba(255, 255, 255, 0.72);
+}
+
+.video-retry-btn[hidden] {
+  display: none;
+}
+
 .video-sequence-arrow {
   position: absolute;
   top: 50%;

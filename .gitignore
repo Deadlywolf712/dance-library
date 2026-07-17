@@ -24,8 +24,8 @@ Salsa Masterclass/
 node_modules/
 __pycache__/
 *.pyc
-package.json
-package-lock.json
+test-results/
+playwright-report/
 pipeline_mapping.json
 
 # Backend/tooling scripts

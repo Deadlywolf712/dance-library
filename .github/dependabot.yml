@@ -1,0 +1,21 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: gradle
+    directory: "/android"
+    schedule:
+      interval: monthly
+    groups:
+      android-dependencies:
+        patterns:
+          - "*"
+    open-pull-requests-limit: 5

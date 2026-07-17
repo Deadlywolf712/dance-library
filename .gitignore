@@ -4,7 +4,6 @@
 *.avi
 *.mkv
 *.m3u8
-*.ts
 
 # Video folders (all the instructor/course folders with videos)
 Adolfo*/
@@ -22,11 +21,25 @@ Salsa Masterclass/
 
 # Build/tool dependencies
 node_modules/
+_site/
 __pycache__/
 *.pyc
 test-results/
 playwright-report/
 pipeline_mapping.json
+
+# Android/Gradle local state and generated packages
+android/.gradle/
+android/.idea/
+android/.kotlin/
+android/**/build/
+android/local.properties
+*.apk
+*.aab
+*.apks
+*.jks
+*.keystore
+keystore.properties
 
 # Backend/tooling scripts
 ai_backend.py

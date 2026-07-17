@@ -3,7 +3,9 @@
   "private": true,
   "version": "1.0.0",
   "scripts": {
-    "test": "node scripts/validate-site.mjs && node scripts/validate-playback.mjs && playwright test",
+    "export:android-catalog": "node scripts/export-android-catalog.mjs",
+    "test": "node scripts/validate-site.mjs && node scripts/validate-playback.mjs && node scripts/validate-pages-package.mjs && playwright test",
+    "test:pages": "node scripts/validate-pages-package.mjs",
     "test:playback": "playwright test"
   },
   "devDependencies": {

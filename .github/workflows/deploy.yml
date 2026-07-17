@@ -2,8 +2,56 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches: [main]
+    paths:
+      - '.gitattributes'
+      - '.github/workflows/deploy.yml'
+      - '.gitignore'
+      - 'app.js'
+      - 'data.js'
+      - 'icon-*.png'
+      - 'icon.svg'
+      - 'index.html'
+      - 'manifest.json'
+      - 'og.png'
+      - 'package*.json'
+      - 'playback-core.js'
+      - 'playwright.config.mjs'
+      - 'salsa_course.js'
+      - 'scripts/playback-test-server.mjs'
+      - 'scripts/stage-pages.mjs'
+      - 'scripts/validate-pages-package.mjs'
+      - 'scripts/validate-playback.mjs'
+      - 'scripts/validate-site.mjs'
+      - 'style.css'
+      - 'summaries/**'
+      - 'sw.js'
+      - 'tests/**'
   pull_request:
     branches: [main]
+    paths:
+      - '.gitattributes'
+      - '.github/workflows/deploy.yml'
+      - '.gitignore'
+      - 'app.js'
+      - 'data.js'
+      - 'icon-*.png'
+      - 'icon.svg'
+      - 'index.html'
+      - 'manifest.json'
+      - 'og.png'
+      - 'package*.json'
+      - 'playback-core.js'
+      - 'playwright.config.mjs'
+      - 'salsa_course.js'
+      - 'scripts/playback-test-server.mjs'
+      - 'scripts/stage-pages.mjs'
+      - 'scripts/validate-pages-package.mjs'
+      - 'scripts/validate-playback.mjs'
+      - 'scripts/validate-site.mjs'
+      - 'style.css'
+      - 'summaries/**'
+      - 'sw.js'
+      - 'tests/**'
   workflow_dispatch:
 permissions:
   contents: read
@@ -11,11 +59,15 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
-  validate:
+  package:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - name: Check out web sources
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: npm
@@ -31,23 +83,27 @@ jobs:
           node scripts/validate-site.mjs
           node scripts/validate-playback.mjs
           npm run test:playback
+          node scripts/validate-pages-package.mjs
+      - name: Configure GitHub Pages
+        if: github.event_name != 'pull_request'
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+      - name: Upload isolated Pages artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: '_site'
 
   deploy:
     if: github.event_name != 'pull_request'
-    needs: validate
+    needs: package
     runs-on: ubuntu-latest
     permissions:
-      contents: read
       pages: write
       id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/configure-pages@v6
-      - uses: actions/upload-pages-artifact@v5
-        with:
-          path: '.'
-      - id: deployment
-        uses: actions/deploy-pages@v5
+      - name: Deploy isolated Pages artifact
+        id: deployment
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0

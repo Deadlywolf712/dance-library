@@ -22,7 +22,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&amp;family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400;1,600&amp;display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=11">
+  <link rel="stylesheet" href="style.css?v=12">
   <link rel="manifest" href="manifest.json">
   <!-- Loading spinner (shown while data.js loads) -->
   <style>
@@ -34,10 +34,10 @@
     @keyframes spin { to { transform: rotate(360deg); } }
   </style>
   <!-- Local catalog scripts are deferred in order so the loading screen can paint first. -->
-  <script defer src="data.js?v=11"></script>
-  <script defer src="salsa_course.js?v=11"></script>
-  <script defer src="playback-core.js?v=11"></script>
-  <script defer src="app.js?v=11"></script>
+  <script defer src="data.js?v=12"></script>
+  <script defer src="salsa_course.js?v=12"></script>
+  <script defer src="playback-core.js?v=12"></script>
+  <script defer src="app.js?v=12"></script>
 </head>
 <body>
   <a class="skip-link" href="#main-content">Skip to library content</a>
@@ -162,6 +162,26 @@
           </button>
           </div>
         </div>
+        <a
+          class="android-download-link"
+          id="android-download-link"
+          href="https://github.com/Deadlywolf712/dance-library/releases/latest/download/Dance-Library-Android.apk"
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="Download the latest Dance Library APK for Android"
+        >
+          <span class="android-download-icon" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="6" y="2" width="12" height="20" rx="2"/>
+              <path d="M9 6h6M12 15V9m-3 3 3 3 3-3M11 19h2"/>
+            </svg>
+          </span>
+          <span class="android-download-copy">
+            <strong>Get the Android app</strong>
+            <small>Latest release &middot; Android 7+</small>
+          </span>
+          <span class="android-download-badge" aria-hidden="true">Download APK</span>
+        </a>
         <button class="home-search-launch" id="home-search-btn" type="button" aria-haspopup="dialog" aria-controls="spotlight-overlay">
           <span class="home-search-icon" aria-hidden="true">⌕</span>
           <span id="home-search-label">Search your lessons</span>

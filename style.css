@@ -3901,6 +3901,75 @@ body {
   border-radius: 999px;
 }
 
+.android-download-link {
+  position: relative;
+  z-index: 1;
+  width: fit-content;
+  max-width: 100%;
+  min-height: 52px;
+  margin-top: 20px;
+  padding: 8px 10px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--border-light));
+  border-radius: 14px;
+  color: var(--text-main);
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-base));
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--accent) 10%, transparent);
+  text-decoration: none;
+  transition: border-color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.android-download-link:hover {
+  border-color: var(--accent);
+  color: var(--text-main);
+  transform: translateY(-1px);
+  box-shadow: 0 12px 30px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.android-download-link:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.android-download-icon {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+  color: var(--pill-text);
+  background: var(--accent);
+}
+
+.android-download-copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  line-height: 1.2;
+}
+
+.android-download-copy strong {
+  font-size: 0.92rem;
+}
+
+.android-download-copy small {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+
+.android-download-badge {
+  padding: 7px 10px;
+  border-radius: 999px;
+  color: var(--pill-text);
+  background: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .home-search-launch {
   position: relative;
   z-index: 1;
@@ -4838,6 +4907,25 @@ body {
     margin-top: 11px;
     padding: 7px 11px;
     border-radius: 12px;
+  }
+
+  .android-download-link {
+    width: 100%;
+    min-height: 50px;
+    margin-top: 10px;
+    padding: 6px 8px;
+    border-radius: 12px;
+  }
+
+  .android-download-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+  }
+
+  .android-download-badge {
+    padding: 6px 8px;
+    font-size: 0.68rem;
   }
 
   .home-search-launch kbd {

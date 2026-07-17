@@ -1,6 +1,10 @@
 # Dance Library
 
-A build-free dance practice library designed for GitHub Pages. It includes 795 streamed lessons, focused playback controls, chapter jumps, bookmarks and notes, favorites, watch history, import/export, and a large theme collection.
+A dance practice library available as both a build-free GitHub Pages site and a native Android app. Both clients use the same 795-lesson catalog and stream adaptive HLS video directly from Bunny CDN.
+
+Both clients include the website’s category/course/folder organization, focused playback controls, chapter jumps, timestamp bookmarks and notes, searchable favorites and history, compatible import/export, durable resume positions, and the complete theme collection. Android implements those features with a native phone/tablet Compose interface and Media3 rather than wrapping the website in a WebView.
+
+[Download the latest Android APK](https://github.com/Deadlywolf712/dance-library/releases/latest/download/Dance-Library-Android.apk) (Android 7.0 or newer).
 
 ## Run locally
 
@@ -25,6 +29,9 @@ Then open `http://127.0.0.1:4176/`.
 - `scripts/validate-site.mjs` — deterministic pre-deploy checks
 - `tests/mobile-playback.spec.mjs` — mobile playback, resume, recovery, and source-race tests
 - `scripts/split-catalog.mjs` — repeatable catalog/summary splitter
+- `android/` — native Kotlin, Jetpack Compose, and Media3 application
+- `scripts/export-android-catalog.mjs` — deterministic web-catalog to Android-asset exporter
+- `scripts/stage-pages.mjs` — strict web-only GitHub Pages package builder
 
 The app uses relative URLs and `#video=...` routes so it works from the `/dance-library/` GitHub Pages project path without a framework or build step.
 
@@ -46,8 +53,22 @@ node scripts/split-catalog.mjs
 
 The command is deterministic and safe to repeat against the generated compact catalog.
 
+## Android app
+
+The native app targets Android 7.0 and newer. It is built with AGP 9.2.1, Gradle 9.4.1, Jetpack Compose, DataStore, and Media3 ExoPlayer. No Bunny API key is stored in the APK; playback URLs contain only the public pull-zone hostname and lesson video ID.
+
+Regenerate the bundled Android catalog and build a debug APK:
+
+```sh
+npm run export:android-catalog
+cd android
+./gradlew lintDebug testDebugUnitTest assembleDebug assembleRelease
+```
+
+On Windows, use `gradlew.bat`. The APK is written to `android/app/build/outputs/apk/debug/app-debug.apk`. See `android/README.md` for Android Studio, command-line, and installation details.
+
 ## Deployment
 
-Pushes to `main` run the validation gate and deploy the repository through the GitHub Pages workflow in `.github/workflows/deploy.yml`.
+Pushes to `main` run the validation gate and deploy an allowlisted web-only package through `.github/workflows/deploy.yml`. Native source, tests, package tooling, and build output are excluded from the Pages artifact. Android changes run a separate lint/test/APK workflow in `.github/workflows/android.yml`.
 
 Progress, bookmarks, notes, favorites, theme choice, and playback positions stay in the browser's local storage. Video media is streamed and intentionally excluded from the service-worker cache.

@@ -10,10 +10,18 @@ class HlsVideoPlayerTest {
     fun resumeIsAppliedOnlyInsideKnownPlayableRange() {
         assertEquals(30_000L, validatedResumePositionMs(30_000L, 60_000L))
         assertEquals(4_000L, validatedResumePositionMs(4_000L, 60_000L))
+        assertEquals(54_000L, validatedResumePositionMs(54_000L, 60_000L))
         assertNull(validatedResumePositionMs(499L, 60_000L))
         assertNull(validatedResumePositionMs(55_000L, 60_000L))
         assertNull(validatedResumePositionMs(90_000L, 60_000L))
         assertNull(validatedResumePositionMs(30_000L, C.TIME_UNSET))
+    }
+
+    @Test
+    fun explicitBookmarkSeekWinsOverSavedResume() {
+        assertEquals(42_000L, initialPlaybackPositionMs(42_000L, 15_000L, 60_000L))
+        assertEquals(60_000L, initialPlaybackPositionMs(90_000L, 15_000L, 60_000L))
+        assertEquals(15_000L, initialPlaybackPositionMs(null, 15_000L, 60_000L))
     }
 
     @Test

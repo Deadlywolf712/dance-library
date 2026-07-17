@@ -14,10 +14,10 @@ class LibraryFilterTest {
     )
 
     @Test
-    fun favoritesAndCategoryComposePredictably() {
+    fun favoritesFilterUsesStableCatalogOrder() {
         val result = filterLessons(
             lessons = listOf(salsa, bachata),
-            filter = LibraryFilter(category = "Bachata", favoritesOnly = true),
+            query = "",
             favorites = setOf(bachata.id),
         )
 
@@ -28,11 +28,32 @@ class LibraryFilterTest {
     fun catalogOrderIsStableAfterSearch() {
         val result = filterLessons(
             lessons = listOf(salsa, bachata),
-            filter = LibraryFilter(query = "turn"),
-            favorites = emptySet(),
+            query = "turn",
         )
 
         assertEquals(listOf(bachata.id, salsa.id), result.map { it.id })
+    }
+
+    @Test
+    fun changingLessonsKeepsSessionToolsButClearsTheLessonSpecificLoop() {
+        val next = sessionForLesson(
+            previous = PracticePlayerSession(
+                lessonId = "lesson-a",
+                speed = 0.75f,
+                mirrored = true,
+                loopStartMs = 10_000L,
+                loopEndMs = 20_000L,
+                theaterMode = true,
+            ),
+            lessonId = "lesson-b",
+        )
+
+        assertEquals("lesson-b", next.lessonId)
+        assertEquals(0.75f, next.speed)
+        assertEquals(true, next.mirrored)
+        assertEquals(null, next.loopStartMs)
+        assertEquals(null, next.loopEndMs)
+        assertEquals(true, next.theaterMode)
     }
 
     @Test
@@ -48,11 +69,11 @@ class LibraryFilterTest {
     }
 
     @Test
-    fun completedPlaybackClearsTransientResume() {
+    fun finalFiveSecondsClearTransientResumeLikeTheWebsite() {
         val positions = updateTransientPlaybackPosition(
             positions = mapOf(salsa.id to 18_750L),
             lessonId = salsa.id,
-            positionMs = 108_000L,
+            positionMs = 115_000L,
             durationMs = 120_000L,
         )
 
@@ -72,7 +93,7 @@ class LibraryFilterTest {
     }
 
     @Test
-    fun suppressedPersistedPositionCannotReappearAfterMarkingWatched() {
+    fun suppressedPersistedPositionCannotReappearAfterCompletion() {
         val merged = mergePlaybackPositions(
             persisted = mapOf(salsa.id to 15_000L),
             transient = emptyMap(),
@@ -83,30 +104,15 @@ class LibraryFilterTest {
     }
 
     @Test
-    fun watchedLessonsRejectLaterProgressUntilExplicitlyUnwatched() {
-        assertEquals(
-            false,
-            isPlaybackTrackingAllowed(
-                lessonId = salsa.id,
-                watchedIds = setOf(salsa.id),
-                explicitlyWatchedIds = emptySet(),
-            ),
+    fun watchedAndResumeStateCanCoexist() {
+        val merged = mergePlaybackPositions(
+            persisted = mapOf(salsa.id to 15_000L),
+            transient = mapOf(salsa.id to 16_000L),
+            suppressed = emptySet(),
         )
-        assertEquals(
-            false,
-            isPlaybackTrackingAllowed(
-                lessonId = salsa.id,
-                watchedIds = emptySet(),
-                explicitlyWatchedIds = setOf(salsa.id),
-            ),
-        )
-        assertEquals(
-            true,
-            isPlaybackTrackingAllowed(
-                lessonId = salsa.id,
-                watchedIds = emptySet(),
-                explicitlyWatchedIds = emptySet(),
-            ),
-        )
+
+        assertEquals(16_000L, merged[salsa.id])
+        assertEquals(false, isPlaybackComplete(114_999L, 120_000L))
+        assertEquals(true, isPlaybackComplete(115_000L, 120_000L))
     }
 }

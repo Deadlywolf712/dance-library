@@ -1,10 +1,9 @@
 package com.deadlywolf.dancelibrary.ui
 
-import android.content.Intent
+import android.view.KeyEvent as AndroidKeyEvent
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -12,7 +11,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -25,160 +23,380 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.automirrored.rounded.MenuBook
-import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Favorite
-import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.History
-import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.MenuBook
+import androidx.compose.material.icons.rounded.NoteAlt
 import androidx.compose.material.icons.rounded.Refresh
-import androidx.compose.material.icons.rounded.Search
-import androidx.compose.material.icons.rounded.Share
-import androidx.compose.material3.AssistChip
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationRail
+import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
+import androidx.compose.runtime.movableContentOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.media3.common.Player
-import com.deadlywolf.dancelibrary.ALL_CATEGORIES
+import androidx.core.view.WindowInsetsControllerCompat
+import com.deadlywolf.dancelibrary.AppDestination
 import com.deadlywolf.dancelibrary.LibraryUiState
 import com.deadlywolf.dancelibrary.LibraryViewModel
-import com.deadlywolf.dancelibrary.model.Lesson
-import com.deadlywolf.dancelibrary.model.LessonChapter
-import com.deadlywolf.dancelibrary.model.category
-import com.deadlywolf.dancelibrary.model.streamUrl
-import com.deadlywolf.dancelibrary.ui.theme.ArcticBlue
-import com.deadlywolf.dancelibrary.ui.theme.ArcticOrange
-import java.util.Locale
-import kotlin.math.min
+import com.deadlywolf.dancelibrary.filterLessons
+import com.deadlywolf.dancelibrary.model.BrowseLocation
+import com.deadlywolf.dancelibrary.ui.theme.DanceLibraryTheme
 
 @Composable
 fun DanceLibraryApp(viewModel: LibraryViewModel) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val libraryListState = rememberLazyListState()
-
-    Surface(
-        color = MaterialTheme.colorScheme.background,
-        modifier = Modifier.fillMaxSize(),
-    ) {
-        BoxWithConstraints(
-            modifier = Modifier
-                .fillMaxSize()
-                .windowInsetsPadding(WindowInsets.safeDrawing),
-        ) {
-            val wideLayout = maxWidth >= 840.dp
-            BackHandler(enabled = !wideLayout && state.selectedLesson != null) {
-                viewModel.selectLesson(null)
-            }
-
+    DanceLibraryTheme(state.currentTheme) {
+        SystemBarAppearance()
+        Surface(color = androidx.compose.material3.MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize()) {
             when {
                 state.loading -> LoadingState()
                 state.errorMessage != null -> CatalogErrorState(state.errorMessage.orEmpty(), viewModel::retryCatalog)
-                wideLayout -> Row(Modifier.fillMaxSize()) {
-                    LibraryPane(
-                        state = state,
-                        listState = libraryListState,
-                        onQueryChange = viewModel::setQuery,
-                        onCategoryChange = viewModel::setCategory,
-                        onFavoritesOnlyChange = viewModel::setFavoritesOnly,
-                        onSelectLesson = viewModel::selectLesson,
-                        onToggleFavorite = viewModel::toggleFavorite,
-                        modifier = Modifier
-                            .widthIn(min = 360.dp, max = 430.dp)
-                            .fillMaxHeight(),
-                    )
-                    Box(
-                        Modifier
-                            .width(1.dp)
-                            .fillMaxHeight()
-                            .background(MaterialTheme.colorScheme.outlineVariant),
-                    )
-                    state.selectedLesson?.let { lesson ->
-                        key(lesson.id) {
-                            LessonDetail(
-                                lesson = lesson,
-                                state = state,
-                                compact = false,
-                                onBack = { viewModel.selectLesson(null) },
-                                onToggleFavorite = { viewModel.toggleFavorite(lesson.id) },
-                                onToggleWatched = { watched -> viewModel.setWatched(lesson.id, watched) },
-                                onProgress = viewModel::savePlayback,
-                                onPlaybackIntentChanged = viewModel::setPlaybackIntent,
-                                modifier = Modifier.weight(1f),
-                            )
-                        }
-                    } ?: WelcomePanel(
-                        state = state,
-                        onResume = { state.lastLesson?.id?.let(viewModel::selectLesson) },
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-
-                state.selectedLesson != null -> {
-                    val selectedLesson = requireNotNull(state.selectedLesson)
-                    key(selectedLesson.id) {
-                        LessonDetail(
-                            lesson = selectedLesson,
-                            state = state,
-                            compact = true,
-                            onBack = { viewModel.selectLesson(null) },
-                            onToggleFavorite = { viewModel.toggleFavorite(selectedLesson.id) },
-                            onToggleWatched = { watched -> viewModel.setWatched(selectedLesson.id, watched) },
-                            onProgress = viewModel::savePlayback,
-                            onPlaybackIntentChanged = viewModel::setPlaybackIntent,
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    }
-                }
-
-                else -> LibraryPane(
-                    state = state,
-                    listState = libraryListState,
-                    onQueryChange = viewModel::setQuery,
-                    onCategoryChange = viewModel::setCategory,
-                    onFavoritesOnlyChange = viewModel::setFavoritesOnly,
-                    onSelectLesson = viewModel::selectLesson,
-                    onToggleFavorite = viewModel::toggleFavorite,
-                    modifier = Modifier.fillMaxSize(),
-                )
+                else -> AdaptiveLibraryShell(state, viewModel)
             }
         }
     }
+}
+
+@Composable
+private fun SystemBarAppearance() {
+    val activity = LocalContext.current.findActivity() ?: return
+    val useDarkIcons = androidx.compose.material3.MaterialTheme.colorScheme.background.luminance() > 0.5f
+    DisposableEffect(activity, useDarkIcons) {
+        val controller = WindowInsetsControllerCompat(activity.window, activity.window.decorView)
+        controller.isAppearanceLightStatusBars = useDarkIcons
+        controller.isAppearanceLightNavigationBars = useDarkIcons
+        onDispose { }
+    }
+}
+
+@Composable
+private fun AdaptiveLibraryShell(state: LibraryUiState, viewModel: LibraryViewModel) {
+    val snackbarHost = remember { SnackbarHostState() }
+    val shellFocusRequester = remember { FocusRequester() }
+    var showSpotlight by rememberSaveable { mutableStateOf(false) }
+    var showKeyboardShortcuts by rememberSaveable { mutableStateOf(false) }
+    var detailFocusNonce by rememberSaveable { mutableStateOf(0) }
+    val latestState = rememberUpdatedState(state)
+    val latestDetailFocusNonce = rememberUpdatedState(detailFocusNonce)
+    val detailContent = remember(viewModel) {
+        movableContentOf { compact: Boolean, contentModifier: Modifier ->
+            LessonDetailScreen(
+                state = latestState.value,
+                viewModel = viewModel,
+                compact = compact,
+                keyboardFocusNonce = latestDetailFocusNonce.value,
+                modifier = contentModifier,
+            )
+        }
+    }
+    LaunchedEffect(state.feedback) {
+        val message = state.feedback ?: return@LaunchedEffect
+        snackbarHost.showSnackbar(message)
+        viewModel.dismissFeedback()
+    }
+    LaunchedEffect(showSpotlight, showKeyboardShortcuts, state.selectedLesson?.id) {
+        if (!showSpotlight && !showKeyboardShortcuts && state.selectedLesson == null) {
+            shellFocusRequester.requestFocus()
+        }
+    }
+
+    BoxWithConstraints(
+        modifier = Modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.safeDrawing)
+            .onPreviewKeyEvent { keyEvent ->
+                val event = keyEvent.nativeKeyEvent
+                val opensSearch = event.action == AndroidKeyEvent.ACTION_DOWN &&
+                    event.repeatCount == 0 &&
+                    (event.isCtrlPressed || event.isMetaPressed) &&
+                    event.keyCode == AndroidKeyEvent.KEYCODE_K
+                if (opensSearch) {
+                    viewModel.pausePlayback()
+                    showKeyboardShortcuts = false
+                    showSpotlight = !showSpotlight
+                }
+                opensSearch
+            }
+            .onKeyEvent { keyEvent ->
+                val event = keyEvent.nativeKeyEvent
+                val opensGuide = event.action == AndroidKeyEvent.ACTION_DOWN &&
+                    event.repeatCount == 0 &&
+                    event.isShiftPressed &&
+                    event.keyCode == AndroidKeyEvent.KEYCODE_SLASH
+                if (opensGuide) {
+                    viewModel.pausePlayback()
+                    showSpotlight = false
+                    showKeyboardShortcuts = !showKeyboardShortcuts
+                }
+                opensGuide
+            }
+            .focusRequester(shellFocusRequester)
+            .focusable(),
+    ) {
+        val wide = maxWidth >= 840.dp
+        val compactDetail = !wide && state.destination == AppDestination.LIBRARY && state.selectedLesson != null
+        val handlesBack = state.selectedLesson != null ||
+            state.query.isNotBlank() ||
+            state.browseLocation != BrowseLocation.Root ||
+            state.destination != AppDestination.LIBRARY
+        BackHandler(enabled = handlesBack) {
+            when {
+                state.destination != AppDestination.LIBRARY -> viewModel.setDestination(AppDestination.LIBRARY)
+                state.selectedLesson != null -> viewModel.selectLesson(null)
+                state.query.isNotBlank() -> viewModel.setQuery("")
+                state.browseLocation != BrowseLocation.Root -> viewModel.navigateBack()
+            }
+        }
+
+        Scaffold(
+            snackbarHost = { SnackbarHost(snackbarHost) },
+            bottomBar = {
+                if (!wide && !compactDetail) {
+                    DestinationBottomBar(state, viewModel)
+                }
+            },
+        ) { padding ->
+            if (wide) {
+                Row(Modifier.fillMaxSize().padding(padding)) {
+                    DestinationRail(state, viewModel)
+                    Box(Modifier.width(1.dp).fillMaxHeight().background(androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant))
+                    if (state.destination == AppDestination.LIBRARY && state.selectedLesson != null) {
+                        LibraryScreen(
+                            state = state,
+                            viewModel = viewModel,
+                            modifier = Modifier.widthIn(min = 350.dp, max = 440.dp).fillMaxHeight(),
+                        )
+                        Box(Modifier.width(1.dp).fillMaxHeight().background(androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant))
+                        detailContent(false, Modifier.weight(1f))
+                    } else {
+                        DestinationContent(state, viewModel, Modifier.weight(1f))
+                    }
+                }
+            } else if (compactDetail) {
+                detailContent(true, Modifier.fillMaxSize().padding(padding))
+            } else {
+                DestinationContent(state, viewModel, Modifier.fillMaxSize().padding(padding))
+            }
+        }
+    }
+
+    if (showSpotlight) {
+        SpotlightSearchDialog(
+            state = state,
+            onDismiss = {
+                showSpotlight = false
+                detailFocusNonce += 1
+            },
+            onSelect = { lessonId ->
+                showSpotlight = false
+                detailFocusNonce += 1
+                viewModel.setDestination(AppDestination.LIBRARY)
+                viewModel.selectLesson(lessonId)
+            },
+        )
+    }
+    if (showKeyboardShortcuts) {
+        KeyboardShortcutsDialog(
+            onDismiss = {
+                showKeyboardShortcuts = false
+                detailFocusNonce += 1
+            },
+        )
+    }
+}
+
+@Composable
+private fun SpotlightSearchDialog(
+    state: LibraryUiState,
+    onDismiss: () -> Unit,
+    onSelect: (String) -> Unit,
+) {
+    var query by rememberSaveable { mutableStateOf("") }
+    val focusRequester = remember { FocusRequester() }
+    val results = remember(query, state.allLessons) { filterLessons(state.allLessons, query) }
+    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Search all lessons") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    singleLine = true,
+                    placeholder = { Text("Title, course, or dance style") },
+                    modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
+                )
+                Text("${results.size} ${if (results.size == 1) "lesson" else "lessons"}")
+                LazyColumn(Modifier.fillMaxWidth().heightIn(max = 380.dp)) {
+                    items(results, key = { it.id }) { lesson ->
+                        TextButton(onClick = { onSelect(lesson.id) }, modifier = Modifier.fillMaxWidth()) {
+                            Column(Modifier.fillMaxWidth()) {
+                                Text(lesson.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(
+                                    lesson.fullFolderLabel(),
+                                    style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
+                                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+    )
+}
+
+@Composable
+private fun KeyboardShortcutsDialog(onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Keyboard shortcuts") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                ShortcutLine("Space", "Play / pause")
+                ShortcutLine("← / →", "Skip back / forward 5 seconds")
+                ShortcutLine("M", "Mirror video")
+                ShortcutLine("B", "Add timestamp bookmark")
+                ShortcutLine("[ / ]", "Set loop start / end")
+                ShortcutLine("Esc", "Exit theater or clear A–B")
+                ShortcutLine("T", "Toggle theater mode")
+                ShortcutLine("Ctrl/Cmd+K", "Search all lessons")
+                ShortcutLine("?", "Show this guide")
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+    )
+}
+
+@Composable
+private fun ShortcutLine(keys: String, action: String) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(keys, style = androidx.compose.material3.MaterialTheme.typography.labelLarge, modifier = Modifier.width(96.dp))
+        Text(action, modifier = Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun DestinationContent(state: LibraryUiState, viewModel: LibraryViewModel, modifier: Modifier) {
+    when (state.destination) {
+        AppDestination.LIBRARY -> LibraryScreen(state, viewModel, modifier)
+        AppDestination.NOTES -> NotesScreen(state, viewModel, modifier)
+        AppDestination.FAVORITES -> FavoritesScreen(state, viewModel, modifier)
+        AppDestination.HISTORY -> HistoryScreen(state, viewModel, modifier)
+        AppDestination.SETTINGS -> SettingsScreen(state, viewModel, modifier)
+    }
+}
+
+@Composable
+private fun DestinationBottomBar(state: LibraryUiState, viewModel: LibraryViewModel) {
+    NavigationBar {
+        AppDestination.entries.forEach { destination ->
+            NavigationBarItem(
+                selected = state.destination == destination,
+                onClick = { selectDestination(destination, state, viewModel) },
+                icon = {
+                    Box {
+                        Icon(destination.icon(), contentDescription = destination.label)
+                        if (destination == AppDestination.NOTES && state.practice.unseenBookmarkCount > 0) {
+                            Surface(
+                                color = androidx.compose.material3.MaterialTheme.colorScheme.error,
+                                contentColor = androidx.compose.material3.MaterialTheme.colorScheme.onError,
+                                shape = androidx.compose.foundation.shape.CircleShape,
+                                modifier = Modifier.align(Alignment.TopEnd),
+                            ) {
+                                Text(
+                                    state.practice.unseenBookmarkCount.coerceAtMost(99).toString(),
+                                    style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
+                                    modifier = Modifier.padding(horizontal = 4.dp),
+                                )
+                            }
+                        }
+                    }
+                },
+                label = { Text(destination.label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun DestinationRail(state: LibraryUiState, viewModel: LibraryViewModel) {
+    NavigationRail(modifier = Modifier.fillMaxHeight()) {
+        Spacer(Modifier.height(10.dp))
+        Surface(
+            color = androidx.compose.material3.MaterialTheme.colorScheme.primary,
+            contentColor = androidx.compose.material3.MaterialTheme.colorScheme.onPrimary,
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp),
+            modifier = Modifier.size(44.dp),
+        ) {
+            Box(contentAlignment = Alignment.Center) { Text("D", style = androidx.compose.material3.MaterialTheme.typography.titleLarge) }
+        }
+        Spacer(Modifier.height(16.dp))
+        AppDestination.entries.forEach { destination ->
+            NavigationRailItem(
+                selected = state.destination == destination,
+                onClick = { selectDestination(destination, state, viewModel) },
+                icon = { Icon(destination.icon(), contentDescription = destination.label) },
+                label = { Text(destination.label) },
+            )
+        }
+    }
+}
+
+private fun selectDestination(destination: AppDestination, state: LibraryUiState, viewModel: LibraryViewModel) {
+    if (destination == AppDestination.LIBRARY && state.destination != AppDestination.LIBRARY) {
+        viewModel.selectLesson(null)
+    }
+    viewModel.setDestination(destination)
+}
+
+private fun AppDestination.icon(): ImageVector = when (this) {
+    AppDestination.LIBRARY -> Icons.Rounded.Home
+    AppDestination.NOTES -> Icons.Rounded.NoteAlt
+    AppDestination.FAVORITES -> Icons.Rounded.Favorite
+    AppDestination.HISTORY -> Icons.Rounded.History
+    AppDestination.SETTINGS -> Icons.Rounded.Settings
 }
 
 @Composable
@@ -189,7 +407,7 @@ private fun LoadingState() {
         modifier = Modifier.fillMaxSize(),
     ) {
         CircularProgressIndicator()
-        Text("Opening your dance library…", style = MaterialTheme.typography.titleMedium)
+        Text("Opening your dance library…", style = androidx.compose.material3.MaterialTheme.typography.titleMedium)
     }
 }
 
@@ -198,13 +416,16 @@ private fun CatalogErrorState(message: String, onRetry: () -> Unit) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(14.dp, Alignment.CenterVertically),
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(28.dp),
+        modifier = Modifier.fillMaxSize().padding(28.dp),
     ) {
-        Icon(Icons.AutoMirrored.Rounded.MenuBook, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(42.dp))
-        Text("The library could not open", style = MaterialTheme.typography.headlineSmall)
-        Text(message, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Icon(
+            Icons.Rounded.MenuBook,
+            contentDescription = null,
+            tint = androidx.compose.material3.MaterialTheme.colorScheme.error,
+            modifier = Modifier.size(42.dp),
+        )
+        Text("The library could not open", style = androidx.compose.material3.MaterialTheme.typography.headlineSmall)
+        Text(message, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
         Button(onClick = onRetry) {
             Icon(Icons.Rounded.Refresh, contentDescription = null)
             Spacer(Modifier.width(8.dp))
@@ -212,436 +433,3 @@ private fun CatalogErrorState(message: String, onRetry: () -> Unit) {
         }
     }
 }
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun LibraryPane(
-    state: LibraryUiState,
-    listState: LazyListState,
-    onQueryChange: (String) -> Unit,
-    onCategoryChange: (String) -> Unit,
-    onFavoritesOnlyChange: (Boolean) -> Unit,
-    onSelectLesson: (String) -> Unit,
-    onToggleFavorite: (String) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Column(modifier.background(MaterialTheme.colorScheme.background)) {
-        Column(
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-            modifier = Modifier.padding(start = 18.dp, top = 16.dp, end = 18.dp, bottom = 12.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Surface(
-                    color = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                    shape = RoundedCornerShape(15.dp),
-                    modifier = Modifier.size(48.dp),
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text("D", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
-                    }
-                }
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text("Dance Library", style = MaterialTheme.typography.titleLarge)
-                    Text(
-                        "${state.allLessons.size} lessons · streamed from Bunny",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                IconButton(onClick = { onFavoritesOnlyChange(!state.filter.favoritesOnly) }) {
-                    Icon(
-                        if (state.filter.favoritesOnly) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
-                        contentDescription = if (state.filter.favoritesOnly) "Show all lessons" else "Show favorites only",
-                        tint = if (state.filter.favoritesOnly) ArcticOrange else MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-
-            PracticeStats(state)
-
-            OutlinedTextField(
-                value = state.filter.query,
-                onValueChange = onQueryChange,
-                singleLine = true,
-                leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
-                placeholder = { Text("Search lessons, instructors, or styles") },
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
-
-        LazyRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.fillMaxWidth(),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 18.dp),
-        ) {
-            item {
-                FilterChip(
-                    selected = state.filter.category == ALL_CATEGORIES,
-                    onClick = { onCategoryChange(ALL_CATEGORIES) },
-                    label = { Text("All") },
-                )
-            }
-            items(state.categories) { category ->
-                FilterChip(
-                    selected = state.filter.category == category,
-                    onClick = { onCategoryChange(category) },
-                    label = { Text(category) },
-                )
-            }
-        }
-
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
-        ) {
-            Text(
-                "${state.visibleLessons.size} ${if (state.visibleLessons.size == 1) "lesson" else "lessons"}",
-                style = MaterialTheme.typography.labelLarge,
-                modifier = Modifier.weight(1f),
-            )
-            if (state.filter.favoritesOnly) {
-                TextButton(onClick = { onFavoritesOnlyChange(false) }) { Text("Clear favorites filter") }
-            }
-        }
-
-        if (state.visibleLessons.isEmpty()) {
-            EmptyResults(modifier = Modifier.weight(1f))
-        } else {
-            LazyColumn(
-                state = listState,
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 14.dp, end = 14.dp, bottom = 24.dp),
-                modifier = Modifier.weight(1f),
-            ) {
-                items(state.visibleLessons, key = Lesson::id) { lesson ->
-                    LessonCard(
-                        lesson = lesson,
-                        favorite = lesson.id in state.practice.favorites,
-                        watched = lesson.id in state.practice.watched,
-                        resumePositionMs = state.practice.positionsMs[lesson.id],
-                        selected = lesson.id == state.selectedLesson?.id,
-                        onClick = { onSelectLesson(lesson.id) },
-                        onToggleFavorite = { onToggleFavorite(lesson.id) },
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun PracticeStats(state: LibraryUiState) {
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-        StatPill("Watched", state.watchedCount.toString(), Icons.Rounded.CheckCircle, Modifier.weight(1f))
-        StatPill("Favorites", state.favoriteCount.toString(), Icons.Rounded.Favorite, Modifier.weight(1f))
-        StatPill("In progress", state.practice.positionsMs.size.toString(), Icons.Rounded.History, Modifier.weight(1f))
-    }
-}
-
-@Composable
-private fun StatPill(label: String, value: String, icon: androidx.compose.ui.graphics.vector.ImageVector, modifier: Modifier) {
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        shape = RoundedCornerShape(14.dp),
-        modifier = modifier,
-    ) {
-        Column(Modifier.padding(horizontal = 10.dp, vertical = 9.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(icon, contentDescription = null, tint = ArcticBlue, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(5.dp))
-                Text(value, style = MaterialTheme.typography.titleMedium)
-            }
-            Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-        }
-    }
-}
-
-@Composable
-private fun LessonCard(
-    lesson: Lesson,
-    favorite: Boolean,
-    watched: Boolean,
-    resumePositionMs: Long?,
-    selected: Boolean,
-    onClick: () -> Unit,
-    onToggleFavorite: () -> Unit,
-) {
-    Card(
-        onClick = onClick,
-        colors = CardDefaults.cardColors(
-            containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = if (selected) 0.dp else 1.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .then(
-                if (selected) Modifier.border(1.dp, MaterialTheme.colorScheme.primary, MaterialTheme.shapes.medium)
-                else Modifier,
-            ),
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(start = 15.dp, top = 12.dp, end = 6.dp, bottom = 12.dp),
-        ) {
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier
-                    .size(42.dp)
-                    .clip(RoundedCornerShape(13.dp))
-                    .background(if (watched) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceVariant),
-            ) {
-                Icon(
-                    if (watched) Icons.Rounded.CheckCircle else Icons.Rounded.PlayArrow,
-                    contentDescription = null,
-                    tint = if (watched) ArcticOrange else ArcticBlue,
-                )
-            }
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(lesson.title, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text(
-                    lesson.course,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(lesson.category, style = MaterialTheme.typography.labelLarge, color = ArcticBlue)
-                    resumePositionMs?.let {
-                        Text("Resume ${formatTime(it)}", style = MaterialTheme.typography.bodyMedium, color = ArcticOrange)
-                    }
-                }
-            }
-            IconButton(onClick = onToggleFavorite) {
-                Icon(
-                    if (favorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
-                    contentDescription = if (favorite) "Remove from favorites" else "Add to favorites",
-                    tint = if (favorite) ArcticOrange else MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun EmptyResults(modifier: Modifier = Modifier) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically),
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(32.dp),
-    ) {
-        Icon(Icons.Rounded.Search, contentDescription = null, modifier = Modifier.size(38.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text("No lessons match", style = MaterialTheme.typography.titleMedium)
-        Text("Try a shorter search or another style.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-}
-
-@Composable
-private fun WelcomePanel(state: LibraryUiState, onResume: () -> Unit, modifier: Modifier = Modifier) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
-        modifier = modifier.padding(48.dp),
-    ) {
-        Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(28.dp)) {
-            Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = ArcticBlue, modifier = Modifier.padding(24.dp).size(56.dp))
-        }
-        Text("Ready when you are", style = MaterialTheme.typography.headlineSmall)
-        Text(
-            "Choose a lesson to stream it directly from Bunny. Your favorites and place are saved on this device.",
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        state.lastLesson?.let {
-            FilledTonalButton(onClick = onResume) {
-                Icon(Icons.Rounded.History, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text("Resume ${it.title}", maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-        }
-    }
-}
-
-@Composable
-private fun LessonDetail(
-    lesson: Lesson,
-    state: LibraryUiState,
-    compact: Boolean,
-    onBack: () -> Unit,
-    onToggleFavorite: () -> Unit,
-    onToggleWatched: (Boolean) -> Unit,
-    onProgress: (String, Long, Long) -> Unit,
-    onPlaybackIntentChanged: (String, Boolean) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val context = LocalContext.current
-    val favorite = lesson.id in state.practice.favorites
-    val watched = lesson.id in state.practice.watched
-    var player by remember(lesson.id) { mutableStateOf<Player?>(null) }
-    val detailListState = rememberLazyListState()
-
-    BoxWithConstraints(modifier.background(MaterialTheme.colorScheme.background)) {
-        val idealVideoHeight = maxWidth * 9f / 16f
-        val constrainedVideoHeight = min(idealVideoHeight.value, maxHeight.value * 0.55f).dp.coerceAtLeast(140.dp)
-
-        Column(Modifier.fillMaxSize()) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(60.dp)
-                    .padding(horizontal = 8.dp),
-            ) {
-                if (compact) {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back to library")
-                    }
-                }
-                Column(Modifier.weight(1f)) {
-                    Text(lesson.category, style = MaterialTheme.typography.labelLarge, color = ArcticBlue)
-                    Text(lesson.title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-                IconButton(onClick = {
-                    val share = Intent(Intent.ACTION_SEND).apply {
-                        type = "text/plain"
-                        putExtra(Intent.EXTRA_SUBJECT, lesson.title)
-                        putExtra(Intent.EXTRA_TEXT, "${lesson.title}\n${lesson.streamUrl(state.pullZone)}")
-                    }
-                    context.startActivity(Intent.createChooser(share, "Share lesson stream"))
-                }) {
-                    Icon(Icons.Rounded.Share, contentDescription = "Share lesson stream")
-                }
-                IconButton(onClick = onToggleFavorite) {
-                    Icon(
-                        if (favorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
-                        contentDescription = if (favorite) "Remove from favorites" else "Add to favorites",
-                        tint = if (favorite) ArcticOrange else MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-
-            HlsVideoPlayer(
-                lesson = lesson,
-                pullZone = state.pullZone,
-                resumePositionMs = state.practice.positionsMs[lesson.id] ?: 0L,
-                playWhenReady = state.playWhenReady,
-                onProgress = onProgress,
-                onPlaybackIntentChanged = onPlaybackIntentChanged,
-                onPlayerChanged = { player = it },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(constrainedVideoHeight),
-            )
-
-            LazyColumn(
-                state = detailListState,
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(18.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
-                modifier = Modifier.weight(1f),
-            ) {
-                item {
-                    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                        Text(lesson.title, style = MaterialTheme.typography.headlineSmall)
-                        Text(
-                            listOf(lesson.course, lesson.breadcrumbs.joinToString(" › "))
-                                .filter(String::isNotBlank)
-                                .joinToString("  ·  "),
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            AssistChip(onClick = {}, enabled = false, label = { Text("${lesson.chapters.size} chapters") })
-                            FilledTonalButton(onClick = { onToggleWatched(!watched) }) {
-                                Icon(if (watched) Icons.Rounded.CheckCircle else Icons.AutoMirrored.Rounded.MenuBook, contentDescription = null)
-                                Spacer(Modifier.width(7.dp))
-                                Text(if (watched) "Watched" else "Mark watched")
-                            }
-                        }
-                    }
-                }
-
-                if (lesson.introParagraphs.isNotEmpty()) {
-                    item {
-                        Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(16.dp)) {
-                            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                lesson.introParagraphs.forEach { paragraph ->
-                                    Text(paragraph, style = MaterialTheme.typography.bodyLarge)
-                                }
-                            }
-                        }
-                    }
-                }
-
-                item {
-                    Text("Lesson chapters", style = MaterialTheme.typography.titleLarge)
-                }
-
-                if (lesson.chapters.isEmpty()) {
-                    item {
-                        Text(
-                            cleanMarkdown(lesson.rawSummary).ifBlank { "No chapter notes are available for this lesson yet." },
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                } else {
-                    itemsIndexed(lesson.chapters, key = { index, chapter -> "${chapter.seconds}-$index" }) { _, chapter ->
-                        ChapterCard(chapter = chapter) {
-                            player?.seekTo(chapter.seconds * 1_000L)
-                            player?.play()
-                        }
-                    }
-                }
-
-                item { Spacer(Modifier.height(12.dp)) }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ChapterCard(chapter: LessonChapter, onClick: () -> Unit) {
-    Card(
-        onClick = onClick,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Row(modifier = Modifier.padding(15.dp), verticalAlignment = Alignment.Top) {
-            Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(10.dp)) {
-                Text(
-                    chapter.label,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp),
-                )
-            }
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                Text(chapter.title.ifBlank { "Chapter ${chapter.label}" }, style = MaterialTheme.typography.titleMedium)
-                if (chapter.description.isNotBlank()) {
-                    Text(chapter.description, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-            Icon(Icons.Rounded.PlayArrow, contentDescription = "Play from ${chapter.label}", tint = ArcticBlue)
-        }
-    }
-}
-
-private fun formatTime(milliseconds: Long): String {
-    val totalSeconds = (milliseconds / 1_000L).coerceAtLeast(0)
-    val hours = totalSeconds / 3_600
-    val minutes = (totalSeconds % 3_600) / 60
-    val seconds = totalSeconds % 60
-    return if (hours > 0) String.format(Locale.US, "%d:%02d:%02d", hours, minutes, seconds)
-    else String.format(Locale.US, "%d:%02d", minutes, seconds)
-}
-
-private fun cleanMarkdown(value: String): String = value
-    .replace("**", "")
-    .replace(Regex("(?m)^\\s*[-*]\\s*"), "")
-    .trim()

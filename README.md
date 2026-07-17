@@ -2,7 +2,7 @@
 
 A dance practice library available as both a build-free GitHub Pages site and a native Android app. Both clients use the same 795-lesson catalog and stream adaptive HLS video directly from Bunny CDN.
 
-The website includes focused playback controls, chapter jumps, bookmarks and notes, favorites, watch history, import/export, and a large theme collection. The Android app adds a native phone/tablet interface, Media3 playback, chapter seeking, favorites, watched state, and durable resume positions without wrapping the website in a WebView.
+Both clients include the website’s category/course/folder organization, focused playback controls, chapter jumps, timestamp bookmarks and notes, searchable favorites and history, compatible import/export, durable resume positions, and the complete theme collection. Android implements those features with a native phone/tablet Compose interface and Media3 rather than wrapping the website in a WebView.
 
 ## Run locally
 

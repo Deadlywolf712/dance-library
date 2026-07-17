@@ -1,6 +1,6 @@
 # Dance Library for Android
 
-This is a native single-activity Android app. It uses Jetpack Compose for the responsive phone/tablet UI, Media3 ExoPlayer for Bunny HLS playback, and Preferences DataStore for favorites, watched lessons, and playback positions. It does not use a WebView.
+This is a native single-activity Android app. It uses Jetpack Compose for the responsive phone/tablet UI, Media3 ExoPlayer for Bunny HLS playback, and Preferences DataStore for bookmarks, notes, favorites, history, resume positions, themes, and settings. It does not wrap the website in a WebView.
 
 ## Requirements
 
@@ -12,7 +12,7 @@ The app compiles against API 37, targets API 36, supports API 24+, and produces 
 
 ## Build
 
-From the repository root, regenerate the checked-in catalog whenever `data.js` or `summaries/` changes:
+From the repository root, regenerate the checked-in catalog whenever `data.js`, `summaries/`, `salsa_course.js`, `app.js`, `index.html`, or `style.css` changes:
 
 ```sh
 npm run export:android-catalog
@@ -35,7 +35,7 @@ adb install -r -t app/build/outputs/apk/debug/app-debug.apk
 
 ## Catalog and playback
 
-`scripts/export-android-catalog.mjs` reads the repository-controlled JavaScript catalog and summary chunks as strict UTF-8 JSON text; it does not evaluate them. The generated `app/src/main/assets/catalog.json` is deterministic and validated for lesson counts, UUIDs, duplicate paths, chapter order, canonical Bunny URLs, and encoding damage.
+`scripts/export-android-catalog.mjs` parses the repository-controlled catalog, summary chunks, website taxonomy, theme definitions, and Salsa Masterclass presentation data as strict UTF-8. The Salsa course data is evaluated only inside a locked-down Node `vm` context with a bounded timeout; it has no browser, network, module, or filesystem globals. The generated `app/src/main/assets/catalog.json` is deterministic and validated for counts, references, folder cycles and rollups, website ordering, theme fields, UUIDs, duplicate paths, chapter order, canonical Bunny URLs, and encoding damage.
 
 Each lesson streams from:
 
@@ -43,7 +43,7 @@ Each lesson streams from:
 https://<pull-zone>.b-cdn.net/<bunny-video-id>/playlist.m3u8
 ```
 
-Media3 selects the appropriate HLS rendition, retries bounded network failures, pauses safely when the app backgrounds, and restores the saved position when the lesson is reopened. Video media is never bundled into the APK.
+Media3 selects the appropriate HLS rendition, retries bounded network failures, pauses safely when the app backgrounds, and restores the saved position when the lesson is reopened. The native practice player also supports ±5-second seeking, 0.5×–2× speed, mirroring, A–B loops, timestamp bookmarks, notes, and immersive theater mode. Video media is never bundled into the APK.
 
 ## Signing
 

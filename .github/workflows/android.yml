@@ -7,6 +7,10 @@ on:
       - ".gitattributes"
       - "android/**"
       - "data.js"
+      - "salsa_course.js"
+      - "index.html"
+      - "style.css"
+      - "app.js"
       - "summaries/**"
       - "scripts/export-android-catalog.mjs"
       - ".github/workflows/android.yml"
@@ -16,6 +20,10 @@ on:
       - ".gitattributes"
       - "android/**"
       - "data.js"
+      - "salsa_course.js"
+      - "index.html"
+      - "style.css"
+      - "app.js"
       - "summaries/**"
       - "scripts/export-android-catalog.mjs"
       - ".github/workflows/android.yml"
@@ -74,6 +82,10 @@ jobs:
       - name: Run unit tests
         working-directory: android
         run: ./gradlew --no-daemon --stacktrace testDebugUnitTest
+
+      - name: Compile instrumented UI tests
+        working-directory: android
+        run: ./gradlew --no-daemon --stacktrace compileDebugAndroidTestKotlin
 
       - name: Assemble debug APK
         working-directory: android

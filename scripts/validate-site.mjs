@@ -8,7 +8,7 @@ const read = filename => fs.readFileSync(path.join(root, filename), 'utf8');
 const fail = message => { throw new Error(message); };
 
 for (const filename of [
-  'index.html', 'style.css', 'app.js', 'data.js', 'salsa_course.js',
+  'index.html', 'style.css', 'app.js', 'playback-core.js', 'data.js', 'salsa_course.js',
   'manifest.json', 'sw.js', 'icon.svg', 'icon-192.png', 'icon-512.png'
 ]) {
   if (!fs.existsSync(path.join(root, filename))) fail(`Missing required asset: ${filename}`);
@@ -119,6 +119,11 @@ const swVersion = sw.match(/CACHE_VERSION\s*=\s*(\d+)/)?.[1];
 if (!appVersion || appVersion !== swVersion) fail('HTML asset version and service-worker cache version differ.');
 const summaryVersion = app.match(/SUMMARY_ASSET_VERSION\s*=\s*(\d+)/)?.[1];
 if (summaryVersion !== swVersion) fail('Summary asset version and service-worker cache version differ.');
+for (const asset of ['style.css', 'app.js', 'data.js', 'salsa_course.js', 'playback-core.js']) {
+  if (!index.includes(`${asset}?v=${swVersion}`) || !sw.includes(`./${asset}?v=${swVersion}`)) {
+    fail(`${asset} must use the current HTML and service-worker asset version.`);
+  }
+}
 if (!app.includes('hls.js@1.6.16/dist/hls.min.js') || !/sha384-[A-Za-z0-9+/=]{64}/.test(app)) {
   fail('The lazy HLS runtime must remain pinned and protected by an integrity hash.');
 }

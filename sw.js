@@ -1,17 +1,18 @@
 // Resilient offline shell for Dance Library.
 // Navigations use network-first; static assets use stale-while-revalidate.
 
-const CACHE_VERSION = 10;
+const CACHE_VERSION = 11;
 const CACHE_PREFIX = 'dance-library-v';
 const CACHE_NAME = `${CACHE_PREFIX}${CACHE_VERSION}`;
 
 const APP_FILES = [
   './',
   './index.html',
-  './style.css?v=10',
-  './app.js?v=10',
-  './data.js?v=10',
-  './salsa_course.js?v=10',
+  './style.css?v=11',
+  './app.js?v=11',
+  './data.js?v=11',
+  './salsa_course.js?v=11',
+  './playback-core.js?v=11',
   './manifest.json',
   './icon.svg',
   './icon-192.png',

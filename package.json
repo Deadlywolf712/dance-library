@@ -1,0 +1,12 @@
+{
+  "name": "dance-library",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "test": "node scripts/validate-site.mjs && node scripts/validate-playback.mjs && playwright test",
+    "test:playback": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.61.1"
+  }
+}

@@ -9,7 +9,7 @@ import com.deadlywolf.dancelibrary.ui.DanceLibraryApp
 import com.deadlywolf.dancelibrary.ui.theme.DanceLibraryTheme
 
 class MainActivity : ComponentActivity() {
-    private val viewModel: LibraryViewModel by viewModels { LibraryViewModel.factory(application) }
+    private val viewModel: LibraryViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

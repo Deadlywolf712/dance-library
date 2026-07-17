@@ -58,16 +58,18 @@ fun HlsVideoPlayer(
     lesson: Lesson,
     pullZone: String,
     resumePositionMs: Long,
-    onProgress: (positionMs: Long, durationMs: Long) -> Unit,
+    playWhenReady: Boolean,
+    onProgress: (lessonId: String, positionMs: Long, durationMs: Long) -> Unit,
+    onPlaybackIntentChanged: (lessonId: String, playWhenReady: Boolean) -> Unit,
     onPlayerChanged: (Player?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current.applicationContext
     val lifecycleOwner = LocalLifecycleOwner.current
-    val currentOnProgress by rememberUpdatedState(onProgress)
-    val currentOnPlayerChanged by rememberUpdatedState(onPlayerChanged)
+    val latestResumePositionMs by rememberUpdatedState(resumePositionMs)
     var playbackState by remember(lesson.id) { mutableIntStateOf(Player.STATE_IDLE) }
     var playerError by remember(lesson.id) { mutableStateOf<PlaybackException?>(null) }
+    var isPlaying by remember(lesson.id) { mutableStateOf(false) }
 
     val player = remember(lesson.id, pullZone) {
         val httpDataSource = DefaultHttpDataSource.Factory()
@@ -105,8 +107,19 @@ fun HlsVideoPlayer(
                 setWakeMode(C.WAKE_MODE_NETWORK)
                 setMediaSource(mediaSource)
                 prepare()
-                playWhenReady = true
+                this.playWhenReady = playWhenReady
             }
+    }
+
+    val lifecyclePlayback = remember(player) { LifecyclePlaybackState() }
+    val progressOwnerId = lesson.id
+    val progressCallback = onProgress
+    val playbackIntentCallback = onPlaybackIntentChanged
+    val playerChangedCallback = onPlayerChanged
+    fun reportSessionProgress() {
+        reportKnownProgress(player) { positionMs, durationMs ->
+            progressCallback(progressOwnerId, positionMs, durationMs)
+        }
     }
 
     DisposableEffect(player) {
@@ -114,7 +127,7 @@ fun HlsVideoPlayer(
         fun applyInitialResume() {
             if (initialResumeHandled) return
             initialResumeHandled = true
-            validatedResumePositionMs(resumePositionMs, player.duration)?.let(player::seekTo)
+            validatedResumePositionMs(latestResumePositionMs, player.duration)?.let(player::seekTo)
         }
 
         val listener = object : Player.Listener {
@@ -124,19 +137,35 @@ fun HlsVideoPlayer(
                     playerError = null
                     applyInitialResume()
                 }
+                if (state == Player.STATE_ENDED) {
+                    reportSessionProgress()
+                    playbackIntentCallback(progressOwnerId, false)
+                }
+            }
+
+            override fun onIsPlayingChanged(playing: Boolean) {
+                isPlaying = playing
+                if (!playing && player.playbackState == Player.STATE_READY) reportSessionProgress()
+            }
+
+            override fun onPlayWhenReadyChanged(ready: Boolean, reason: Int) {
+                if (shouldPersistPlaybackIntent(lifecyclePlayback.pausedForLifecycle)) {
+                    playbackIntentCallback(progressOwnerId, ready)
+                }
             }
 
             override fun onPlayerError(error: PlaybackException) {
+                reportSessionProgress()
                 playerError = error
             }
         }
         player.addListener(listener)
         if (player.playbackState == Player.STATE_READY) applyInitialResume()
-        currentOnPlayerChanged(player)
+        playerChangedCallback(player)
 
         onDispose {
-            reportKnownProgress(player, currentOnProgress)
-            currentOnPlayerChanged(null)
+            reportSessionProgress()
+            playerChangedCallback(null)
             player.removeListener(listener)
             player.release()
         }
@@ -147,14 +176,16 @@ fun HlsVideoPlayer(
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_STOP -> {
+                    lifecyclePlayback.pausedForLifecycle = true
                     resumeAfterForeground = player.playWhenReady
-                    reportKnownProgress(player, currentOnProgress)
+                    reportSessionProgress()
                     player.pause()
                 }
 
-                Lifecycle.Event.ON_START -> if (resumeAfterForeground) {
-                    player.play()
+                Lifecycle.Event.ON_START -> {
+                    if (resumeAfterForeground) player.play()
                     resumeAfterForeground = false
+                    lifecyclePlayback.pausedForLifecycle = false
                 }
 
                 else -> Unit
@@ -167,7 +198,7 @@ fun HlsVideoPlayer(
     LaunchedEffect(player) {
         while (isActive) {
             delay(PROGRESS_SAVE_INTERVAL_MS)
-            reportKnownProgress(player, currentOnProgress)
+            if (player.isPlaying) reportSessionProgress()
         }
     }
 
@@ -180,11 +211,14 @@ fun HlsVideoPlayer(
                     controllerAutoShow = true
                     controllerShowTimeoutMs = 3_500
                     setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
-                    keepScreenOn = true
+                    keepScreenOn = false
                     contentDescription = "${lesson.title} video player"
                 }
             },
-            update = { view -> view.player = player },
+            update = { view ->
+                view.player = player
+                view.keepScreenOn = isPlaying
+            },
             modifier = Modifier.fillMaxSize(),
         )
 
@@ -260,6 +294,11 @@ internal fun validatedResumePositionMs(savedPositionMs: Long, durationMs: Long):
     return savedPositionMs.takeIf { it < durationMs - endGuardMs }
 }
 
+private class LifecyclePlaybackState(var pausedForLifecycle: Boolean = false)
+
+internal fun shouldPersistPlaybackIntent(pausedForLifecycle: Boolean): Boolean =
+    !pausedForLifecycle
+
 private fun friendlyPlaybackError(error: PlaybackException): String = when (error.errorCode) {
     PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
     PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
@@ -276,6 +315,6 @@ private fun friendlyPlaybackError(error: PlaybackException): String = when (erro
     else -> "The player hit an unexpected media error (${error.errorCodeName})."
 }
 
-private const val PROGRESS_SAVE_INTERVAL_MS = 5_000L
-private const val MINIMUM_USEFUL_RESUME_MS = 5_000L
+private const val PROGRESS_SAVE_INTERVAL_MS = 15_000L
+private const val MINIMUM_USEFUL_RESUME_MS = 500L
 private const val RESUME_END_GUARD_MS = 10_000L

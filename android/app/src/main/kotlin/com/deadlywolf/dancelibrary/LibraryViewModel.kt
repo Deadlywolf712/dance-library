@@ -2,8 +2,7 @@ package com.deadlywolf.dancelibrary
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.deadlywolf.dancelibrary.data.CatalogRepository
 import com.deadlywolf.dancelibrary.data.PracticeRepository
@@ -16,6 +15,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 data class LibraryFilter(
@@ -34,6 +34,7 @@ data class LibraryUiState(
     val filter: LibraryFilter = LibraryFilter(),
     val practice: PracticeSnapshot = PracticeSnapshot(),
     val selectedLesson: Lesson? = null,
+    val playWhenReady: Boolean = false,
 ) {
     val watchedCount: Int get() = practice.watched.count { id -> allLessons.any { it.id == id } }
     val favoriteCount: Int get() = practice.favorites.count { id -> allLessons.any { it.id == id } }
@@ -51,40 +52,62 @@ fun filterLessons(
     .sortedBy(Lesson::catalogOrdinal)
     .toList()
 
-class LibraryViewModel(application: Application) : AndroidViewModel(application) {
+class LibraryViewModel(
+    application: Application,
+    private val savedStateHandle: SavedStateHandle,
+) : AndroidViewModel(application) {
     private val catalogRepository = CatalogRepository(application)
     private val practiceRepository = PracticeRepository(application)
 
     private val catalog = MutableStateFlow<DanceCatalog?>(null)
     private val catalogError = MutableStateFlow<String?>(null)
-    private val selectedLessonId = MutableStateFlow<String?>(null)
-    private val query = MutableStateFlow("")
-    private val category = MutableStateFlow(ALL_CATEGORIES)
-    private val favoritesOnly = MutableStateFlow(false)
+    private val selectedLessonId = savedStateHandle.getStateFlow<String?>(SELECTED_LESSON_KEY, null)
+    private val query = savedStateHandle.getStateFlow(QUERY_KEY, "")
+    private val category = savedStateHandle.getStateFlow(CATEGORY_KEY, ALL_CATEGORIES)
+    private val favoritesOnly = savedStateHandle.getStateFlow(FAVORITES_ONLY_KEY, false)
+    private val playbackIntent = savedStateHandle.getStateFlow(PLAYBACK_INTENT_KEY, false)
+    private val transientPositionsMs = MutableStateFlow<Map<String, Long>>(emptyMap())
+    private val suppressedResumeIds = MutableStateFlow<Set<String>>(emptySet())
+    private val explicitlyWatchedPlaybackLocks = MutableStateFlow<Set<String>>(emptySet())
 
     private val filter = combine(query, category, favoritesOnly, ::LibraryFilter)
+    private val playbackSession = combine(
+        transientPositionsMs,
+        suppressedResumeIds,
+        playbackIntent,
+        ::PlaybackSessionState,
+    )
+    private val uiControls = combine(filter, selectedLessonId, playbackSession, ::UiControls)
 
     val uiState = combine(
         catalog,
         catalogError,
         practiceRepository.snapshot,
-        combine(filter, selectedLessonId, ::Pair),
-    ) { loadedCatalog, error, practice, (activeFilter, selectedId) ->
+        uiControls,
+    ) { loadedCatalog, error, persistedPractice, controls ->
         val lessons = loadedCatalog?.lessons.orEmpty()
         val preferredOrder = listOf("Salsa", "Bachata", "Zouk", "Kizomba", "Salsa Masterclass", "Kizomba Masterclass")
         val available = lessons.map(Lesson::category).distinct()
         val categories = preferredOrder.filter(available::contains) + available.filterNot(preferredOrder::contains).sorted()
+        val practice = persistedPractice.copy(
+            positionsMs = mergePlaybackPositions(
+                persisted = persistedPractice.positionsMs,
+                transient = controls.playbackSession.transientPositions,
+                suppressed = controls.playbackSession.suppressedResumeIds,
+            ),
+        )
 
         LibraryUiState(
             loading = loadedCatalog == null && error == null,
             errorMessage = error,
             pullZone = loadedCatalog?.pullZoneHost.orEmpty(),
             allLessons = lessons,
-            visibleLessons = filterLessons(lessons, activeFilter, practice.favorites),
+            visibleLessons = filterLessons(lessons, controls.filter, practice.favorites),
             categories = categories,
-            filter = activeFilter,
+            filter = controls.filter,
             practice = practice,
-            selectedLesson = lessons.firstOrNull { it.id == selectedId },
+            selectedLesson = lessons.firstOrNull { it.id == controls.selectedLessonId },
+            playWhenReady = controls.playbackSession.playWhenReady,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -99,19 +122,22 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     fun retryCatalog() = loadCatalog()
 
     fun setQuery(value: String) {
-        query.value = value
+        savedStateHandle[QUERY_KEY] = value
     }
 
     fun setCategory(value: String) {
-        category.value = value
+        savedStateHandle[CATEGORY_KEY] = value
     }
 
     fun setFavoritesOnly(value: Boolean) {
-        favoritesOnly.value = value
+        savedStateHandle[FAVORITES_ONLY_KEY] = value
     }
 
     fun selectLesson(lessonId: String?) {
-        selectedLessonId.value = lessonId
+        if (lessonId != selectedLessonId.value) {
+            savedStateHandle[PLAYBACK_INTENT_KEY] = lessonId != null
+        }
+        savedStateHandle[SELECTED_LESSON_KEY] = lessonId
     }
 
     fun toggleFavorite(lessonId: String) {
@@ -119,11 +145,47 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun savePlayback(lessonId: String, positionMs: Long, durationMs: Long) {
+        if (
+            !isPlaybackTrackingAllowed(
+                lessonId = lessonId,
+                watchedIds = uiState.value.practice.watched,
+                explicitlyWatchedIds = explicitlyWatchedPlaybackLocks.value,
+            )
+        ) {
+            transientPositionsMs.update { it - lessonId }
+            suppressedResumeIds.update { it + lessonId }
+            return
+        }
+
+        val completed = isPlaybackComplete(positionMs, durationMs)
+        suppressedResumeIds.update { suppressed ->
+            when {
+                completed || positionMs < MINIMUM_DURABLE_RESUME_MS -> suppressed + lessonId
+                else -> suppressed - lessonId
+            }
+        }
+        transientPositionsMs.update { positions ->
+            updateTransientPlaybackPosition(positions, lessonId, positionMs, durationMs)
+        }
         viewModelScope.launch { practiceRepository.savePlayback(lessonId, positionMs, durationMs) }
     }
 
     fun setWatched(lessonId: String, watched: Boolean) {
+        if (watched) {
+            explicitlyWatchedPlaybackLocks.update { it + lessonId }
+            transientPositionsMs.update { it - lessonId }
+            suppressedResumeIds.update { it + lessonId }
+        } else {
+            explicitlyWatchedPlaybackLocks.update { it - lessonId }
+            suppressedResumeIds.update { it - lessonId }
+        }
         viewModelScope.launch { practiceRepository.setWatched(lessonId, watched) }
+    }
+
+    fun setPlaybackIntent(lessonId: String, playWhenReady: Boolean) {
+        if (selectedLessonId.value == lessonId) {
+            savedStateHandle[PLAYBACK_INTENT_KEY] = playWhenReady
+        }
     }
 
     private fun loadCatalog() {
@@ -138,16 +200,57 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    companion object {
-        fun factory(application: Application): ViewModelProvider.Factory =
-            object : ViewModelProvider.Factory {
-                @Suppress("UNCHECKED_CAST")
-                override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                    require(modelClass.isAssignableFrom(LibraryViewModel::class.java))
-                    return LibraryViewModel(application) as T
-                }
-            }
+    private companion object {
+        const val SELECTED_LESSON_KEY = "selected_lesson_id"
+        const val QUERY_KEY = "query"
+        const val CATEGORY_KEY = "category"
+        const val FAVORITES_ONLY_KEY = "favorites_only"
+        const val PLAYBACK_INTENT_KEY = "playback_intent"
     }
 }
 
+private data class PlaybackSessionState(
+    val transientPositions: Map<String, Long>,
+    val suppressedResumeIds: Set<String>,
+    val playWhenReady: Boolean,
+)
+
+private data class UiControls(
+    val filter: LibraryFilter,
+    val selectedLessonId: String?,
+    val playbackSession: PlaybackSessionState,
+)
+
+internal fun mergePlaybackPositions(
+    persisted: Map<String, Long>,
+    transient: Map<String, Long>,
+    suppressed: Set<String>,
+): Map<String, Long> = (persisted - suppressed) + transient
+
+internal fun updateTransientPlaybackPosition(
+    positions: Map<String, Long>,
+    lessonId: String,
+    positionMs: Long,
+    durationMs: Long,
+): Map<String, Long> {
+    val completed = isPlaybackComplete(positionMs, durationMs)
+    return if (completed || positionMs < MINIMUM_TRANSIENT_RESUME_MS) {
+        positions - lessonId
+    } else {
+        positions + (lessonId to positionMs)
+    }
+}
+
+internal fun isPlaybackTrackingAllowed(
+    lessonId: String,
+    watchedIds: Set<String>,
+    explicitlyWatchedIds: Set<String>,
+): Boolean = lessonId !in watchedIds && lessonId !in explicitlyWatchedIds
+
+private fun isPlaybackComplete(positionMs: Long, durationMs: Long): Boolean =
+    durationMs > 0 && positionMs >= (durationMs * PLAYBACK_COMPLETION_FRACTION).toLong()
+
 const val ALL_CATEGORIES = "All"
+private const val MINIMUM_TRANSIENT_RESUME_MS = 500L
+private const val MINIMUM_DURABLE_RESUME_MS = 5_000L
+private const val PLAYBACK_COMPLETION_FRACTION = 0.90

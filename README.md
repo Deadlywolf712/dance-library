@@ -60,7 +60,7 @@ Regenerate the bundled Android catalog and build a debug APK:
 ```sh
 npm run export:android-catalog
 cd android
-./gradlew lintDebug testDebugUnitTest assembleDebug
+./gradlew lintDebug testDebugUnitTest assembleDebug assembleRelease
 ```
 
 On Windows, use `gradlew.bat`. The APK is written to `android/app/build/outputs/apk/debug/app-debug.apk`. See `android/README.md` for Android Studio, command-line, and installation details.

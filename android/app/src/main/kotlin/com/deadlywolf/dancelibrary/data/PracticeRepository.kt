@@ -49,9 +49,18 @@ class PracticeRepository internal constructor(
     suspend fun savePlayback(lessonId: String, positionMs: Long, durationMs: Long) {
         if (positionMs < 0) return
         editSafely("playback progress") { values ->
-            val positions = decodePositions(values[POSITIONS]).toMutableMap()
-            val watched = values[WATCHED].orEmpty().toMutableSet()
+            val originalPositions = decodePositions(values[POSITIONS])
+            val originalWatched = values[WATCHED].orEmpty()
+            val positions = originalPositions.toMutableMap()
+            val watched = originalWatched.toMutableSet()
             val completed = durationMs > 0 && positionMs >= (durationMs * COMPLETION_FRACTION).toLong()
+
+            if (lessonId in originalWatched) {
+                if (positions.remove(lessonId) != null) {
+                    values[POSITIONS] = gson.toJson(positions)
+                }
+                return@editSafely
+            }
 
             when {
                 completed -> {
@@ -60,6 +69,14 @@ class PracticeRepository internal constructor(
                 }
                 positionMs >= MINIMUM_RESUME_MS -> positions[lessonId] = positionMs
                 else -> positions.remove(lessonId)
+            }
+
+            if (
+                positions == originalPositions &&
+                watched == originalWatched &&
+                values[LAST_LESSON] == lessonId
+            ) {
+                return@editSafely
             }
 
             values[POSITIONS] = gson.toJson(positions)
@@ -71,9 +88,14 @@ class PracticeRepository internal constructor(
 
     suspend fun setWatched(lessonId: String, watched: Boolean) {
         editSafely("watched status") { values ->
-            val next = values[WATCHED].orEmpty().toMutableSet()
+            val current = values[WATCHED].orEmpty()
+            val next = current.toMutableSet()
             if (watched) next.add(lessonId) else next.remove(lessonId)
+            val positions = decodePositions(values[POSITIONS]).toMutableMap()
+            val removedPosition = watched && positions.remove(lessonId) != null
+            if (next == current && !removedPosition) return@editSafely
             values[WATCHED] = next
+            if (removedPosition) values[POSITIONS] = gson.toJson(positions)
         }
     }
 

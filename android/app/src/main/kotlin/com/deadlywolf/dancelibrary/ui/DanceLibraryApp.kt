@@ -25,17 +25,19 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.MenuBook
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.History
-import androidx.compose.material.icons.rounded.MenuBook
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
@@ -59,6 +61,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -87,6 +90,7 @@ import kotlin.math.min
 @Composable
 fun DanceLibraryApp(viewModel: LibraryViewModel) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val libraryListState = rememberLazyListState()
 
     Surface(
         color = MaterialTheme.colorScheme.background,
@@ -108,6 +112,7 @@ fun DanceLibraryApp(viewModel: LibraryViewModel) {
                 wideLayout -> Row(Modifier.fillMaxSize()) {
                     LibraryPane(
                         state = state,
+                        listState = libraryListState,
                         onQueryChange = viewModel::setQuery,
                         onCategoryChange = viewModel::setCategory,
                         onFavoritesOnlyChange = viewModel::setFavoritesOnly,
@@ -124,18 +129,19 @@ fun DanceLibraryApp(viewModel: LibraryViewModel) {
                             .background(MaterialTheme.colorScheme.outlineVariant),
                     )
                     state.selectedLesson?.let { lesson ->
-                        LessonDetail(
-                            lesson = lesson,
-                            state = state,
-                            compact = false,
-                            onBack = { viewModel.selectLesson(null) },
-                            onToggleFavorite = { viewModel.toggleFavorite(lesson.id) },
-                            onToggleWatched = { watched -> viewModel.setWatched(lesson.id, watched) },
-                            onProgress = { position, duration ->
-                                viewModel.savePlayback(lesson.id, position, duration)
-                            },
-                            modifier = Modifier.weight(1f),
-                        )
+                        key(lesson.id) {
+                            LessonDetail(
+                                lesson = lesson,
+                                state = state,
+                                compact = false,
+                                onBack = { viewModel.selectLesson(null) },
+                                onToggleFavorite = { viewModel.toggleFavorite(lesson.id) },
+                                onToggleWatched = { watched -> viewModel.setWatched(lesson.id, watched) },
+                                onProgress = viewModel::savePlayback,
+                                onPlaybackIntentChanged = viewModel::setPlaybackIntent,
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
                     } ?: WelcomePanel(
                         state = state,
                         onResume = { state.lastLesson?.id?.let(viewModel::selectLesson) },
@@ -145,22 +151,24 @@ fun DanceLibraryApp(viewModel: LibraryViewModel) {
 
                 state.selectedLesson != null -> {
                     val selectedLesson = requireNotNull(state.selectedLesson)
-                    LessonDetail(
-                        lesson = selectedLesson,
-                        state = state,
-                        compact = true,
-                        onBack = { viewModel.selectLesson(null) },
-                        onToggleFavorite = { viewModel.toggleFavorite(selectedLesson.id) },
-                        onToggleWatched = { watched -> viewModel.setWatched(selectedLesson.id, watched) },
-                        onProgress = { position, duration ->
-                            viewModel.savePlayback(selectedLesson.id, position, duration)
-                        },
-                        modifier = Modifier.fillMaxSize(),
-                    )
+                    key(selectedLesson.id) {
+                        LessonDetail(
+                            lesson = selectedLesson,
+                            state = state,
+                            compact = true,
+                            onBack = { viewModel.selectLesson(null) },
+                            onToggleFavorite = { viewModel.toggleFavorite(selectedLesson.id) },
+                            onToggleWatched = { watched -> viewModel.setWatched(selectedLesson.id, watched) },
+                            onProgress = viewModel::savePlayback,
+                            onPlaybackIntentChanged = viewModel::setPlaybackIntent,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
                 }
 
                 else -> LibraryPane(
                     state = state,
+                    listState = libraryListState,
                     onQueryChange = viewModel::setQuery,
                     onCategoryChange = viewModel::setCategory,
                     onFavoritesOnlyChange = viewModel::setFavoritesOnly,
@@ -194,7 +202,7 @@ private fun CatalogErrorState(message: String, onRetry: () -> Unit) {
             .fillMaxSize()
             .padding(28.dp),
     ) {
-        Icon(Icons.Rounded.MenuBook, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(42.dp))
+        Icon(Icons.AutoMirrored.Rounded.MenuBook, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(42.dp))
         Text("The library could not open", style = MaterialTheme.typography.headlineSmall)
         Text(message, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Button(onClick = onRetry) {
@@ -209,6 +217,7 @@ private fun CatalogErrorState(message: String, onRetry: () -> Unit) {
 @Composable
 private fun LibraryPane(
     state: LibraryUiState,
+    listState: LazyListState,
     onQueryChange: (String) -> Unit,
     onCategoryChange: (String) -> Unit,
     onFavoritesOnlyChange: (Boolean) -> Unit,
@@ -302,6 +311,7 @@ private fun LibraryPane(
             EmptyResults(modifier = Modifier.weight(1f))
         } else {
             LazyColumn(
+                state = listState,
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 14.dp, end = 14.dp, bottom = 24.dp),
                 modifier = Modifier.weight(1f),
@@ -465,13 +475,15 @@ private fun LessonDetail(
     onBack: () -> Unit,
     onToggleFavorite: () -> Unit,
     onToggleWatched: (Boolean) -> Unit,
-    onProgress: (Long, Long) -> Unit,
+    onProgress: (String, Long, Long) -> Unit,
+    onPlaybackIntentChanged: (String, Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val favorite = lesson.id in state.practice.favorites
     val watched = lesson.id in state.practice.watched
     var player by remember(lesson.id) { mutableStateOf<Player?>(null) }
+    val detailListState = rememberLazyListState()
 
     BoxWithConstraints(modifier.background(MaterialTheme.colorScheme.background)) {
         val idealVideoHeight = maxWidth * 9f / 16f
@@ -487,7 +499,7 @@ private fun LessonDetail(
             ) {
                 if (compact) {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Rounded.ArrowBack, contentDescription = "Back to library")
+                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back to library")
                     }
                 }
                 Column(Modifier.weight(1f)) {
@@ -517,7 +529,9 @@ private fun LessonDetail(
                 lesson = lesson,
                 pullZone = state.pullZone,
                 resumePositionMs = state.practice.positionsMs[lesson.id] ?: 0L,
+                playWhenReady = state.playWhenReady,
                 onProgress = onProgress,
+                onPlaybackIntentChanged = onPlaybackIntentChanged,
                 onPlayerChanged = { player = it },
                 modifier = Modifier
                     .fillMaxWidth()
@@ -525,6 +539,7 @@ private fun LessonDetail(
             )
 
             LazyColumn(
+                state = detailListState,
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(18.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
                 modifier = Modifier.weight(1f),
@@ -542,7 +557,7 @@ private fun LessonDetail(
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                             AssistChip(onClick = {}, enabled = false, label = { Text("${lesson.chapters.size} chapters") })
                             FilledTonalButton(onClick = { onToggleWatched(!watched) }) {
-                                Icon(if (watched) Icons.Rounded.CheckCircle else Icons.Rounded.MenuBook, contentDescription = null)
+                                Icon(if (watched) Icons.Rounded.CheckCircle else Icons.AutoMirrored.Rounded.MenuBook, contentDescription = null)
                                 Spacer(Modifier.width(7.dp))
                                 Text(if (watched) "Watched" else "Mark watched")
                             }

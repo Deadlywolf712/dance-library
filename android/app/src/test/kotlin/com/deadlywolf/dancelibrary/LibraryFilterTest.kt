@@ -34,4 +34,79 @@ class LibraryFilterTest {
 
         assertEquals(listOf(bachata.id, salsa.id), result.map { it.id })
     }
+
+    @Test
+    fun transientPlaybackKeepsExactResumeAcrossPlayerRecreation() {
+        val positions = updateTransientPlaybackPosition(
+            positions = emptyMap(),
+            lessonId = salsa.id,
+            positionMs = 18_750L,
+            durationMs = 120_000L,
+        )
+
+        assertEquals(18_750L, positions[salsa.id])
+    }
+
+    @Test
+    fun completedPlaybackClearsTransientResume() {
+        val positions = updateTransientPlaybackPosition(
+            positions = mapOf(salsa.id to 18_750L),
+            lessonId = salsa.id,
+            positionMs = 108_000L,
+            durationMs = 120_000L,
+        )
+
+        assertEquals(emptyMap<String, Long>(), positions)
+    }
+
+    @Test
+    fun shortInMemoryPositionSurvivesRotationWithoutBecomingDurableHistory() {
+        val positions = updateTransientPlaybackPosition(
+            positions = emptyMap(),
+            lessonId = salsa.id,
+            positionMs = 4_000L,
+            durationMs = 120_000L,
+        )
+
+        assertEquals(4_000L, positions[salsa.id])
+    }
+
+    @Test
+    fun suppressedPersistedPositionCannotReappearAfterMarkingWatched() {
+        val merged = mergePlaybackPositions(
+            persisted = mapOf(salsa.id to 15_000L),
+            transient = emptyMap(),
+            suppressed = setOf(salsa.id),
+        )
+
+        assertEquals(emptyMap<String, Long>(), merged)
+    }
+
+    @Test
+    fun watchedLessonsRejectLaterProgressUntilExplicitlyUnwatched() {
+        assertEquals(
+            false,
+            isPlaybackTrackingAllowed(
+                lessonId = salsa.id,
+                watchedIds = setOf(salsa.id),
+                explicitlyWatchedIds = emptySet(),
+            ),
+        )
+        assertEquals(
+            false,
+            isPlaybackTrackingAllowed(
+                lessonId = salsa.id,
+                watchedIds = emptySet(),
+                explicitlyWatchedIds = setOf(salsa.id),
+            ),
+        )
+        assertEquals(
+            true,
+            isPlaybackTrackingAllowed(
+                lessonId = salsa.id,
+                watchedIds = emptySet(),
+                explicitlyWatchedIds = emptySet(),
+            ),
+        )
+    }
 }

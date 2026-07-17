@@ -9,7 +9,8 @@ class HlsVideoPlayerTest {
     @Test
     fun resumeIsAppliedOnlyInsideKnownPlayableRange() {
         assertEquals(30_000L, validatedResumePositionMs(30_000L, 60_000L))
-        assertNull(validatedResumePositionMs(4_999L, 60_000L))
+        assertEquals(4_000L, validatedResumePositionMs(4_000L, 60_000L))
+        assertNull(validatedResumePositionMs(499L, 60_000L))
         assertNull(validatedResumePositionMs(55_000L, 60_000L))
         assertNull(validatedResumePositionMs(90_000L, 60_000L))
         assertNull(validatedResumePositionMs(30_000L, C.TIME_UNSET))
@@ -23,5 +24,11 @@ class HlsVideoPlayerTest {
         )
         assertNull(normalizedPlaybackProgress(positionMs = 10_000L, durationMs = C.TIME_UNSET))
         assertNull(normalizedPlaybackProgress(positionMs = -1L, durationMs = 60_000L))
+    }
+
+    @Test
+    fun everyNonLifecyclePauseUpdatesRestoredPlaybackIntent() {
+        assertEquals(true, shouldPersistPlaybackIntent(pausedForLifecycle = false))
+        assertEquals(false, shouldPersistPlaybackIntent(pausedForLifecycle = true))
     }
 }

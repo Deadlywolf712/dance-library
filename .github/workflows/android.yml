@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
     paths:
+      - ".gitattributes"
       - "android/**"
       - "data.js"
       - "summaries/**"
@@ -12,6 +13,7 @@ on:
   pull_request:
     branches: [main]
     paths:
+      - ".gitattributes"
       - "android/**"
       - "data.js"
       - "summaries/**"
@@ -76,6 +78,10 @@ jobs:
       - name: Assemble debug APK
         working-directory: android
         run: ./gradlew --no-daemon --stacktrace assembleDebug
+
+      - name: Verify minified release build
+        working-directory: android
+        run: ./gradlew --no-daemon --stacktrace assembleRelease
 
       - name: Upload debug APK
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6

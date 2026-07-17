@@ -1863,8 +1863,9 @@ document.addEventListener('DOMContentLoaded', () => {
             let stablePlaybackTimer = null;
 
             const onStablePlayback = () => {
-                clearTimeout(stablePlaybackTimer);
+                if (stablePlaybackTimer) return;
                 stablePlaybackTimer = setTimeout(() => {
+                    stablePlaybackTimer = null;
                     if (!sourceIsCurrent(requestId, requestedVideo, sessionHls)) return;
                     networkRecoveries = 0;
                     mediaRecoveries = 0;

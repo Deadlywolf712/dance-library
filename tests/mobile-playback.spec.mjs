@@ -33,7 +33,7 @@ async function installFakeHls(page) {
     }
 
     class FakeHls {
-      static Events = { MANIFEST_PARSED: 'manifestParsed', ERROR: 'error' };
+      static Events = { MANIFEST_PARSED: 'manifestParsed', FRAG_LOADED: 'fragLoaded', ERROR: 'error' };
       static ErrorTypes = { NETWORK_ERROR: 'networkError', MEDIA_ERROR: 'mediaError' };
       static isSupported() { return true; }
 
@@ -208,4 +208,42 @@ test('stale callbacks cannot destroy the current stream and media recovery is bo
   });
   await expect.poll(() => page.evaluate(() => globalThis.__fakeHlsInstances.at(-1).networkRestarts)).toBe(1);
   await expectContinuousPlayback(page);
+});
+
+test('stable fragment loading resets one recovery streak without making retries unbounded', async ({ page }) => {
+  await openLesson(page);
+  await page.clock.install();
+
+  const emitMediaError = details => page.evaluate(detailsValue => {
+    const current = globalThis.__fakeHlsInstances.at(-1);
+    current.emit(globalThis.Hls.Events.ERROR, {
+      fatal: true,
+      type: globalThis.Hls.ErrorTypes.MEDIA_ERROR,
+      details: detailsValue
+    });
+  }, details);
+
+  const emitFragment = () => page.evaluate(() => {
+    globalThis.__fakeHlsInstances.at(-1).emit(globalThis.Hls.Events.FRAG_LOADED);
+  });
+
+  await emitMediaError('first-streak');
+  await page.clock.fastForward(1);
+  await emitFragment();
+
+  // Frequent successful fragments must not postpone the original stable window.
+  for (let index = 0; index < 5; index += 1) {
+    await page.clock.fastForward(5_000);
+    await emitFragment();
+  }
+  await page.clock.fastForward(5_001);
+
+  await emitMediaError('after-stable-1');
+  await page.clock.fastForward(1_001);
+  await emitMediaError('after-stable-2');
+  expect(await page.evaluate(() => globalThis.__fakeHlsInstances.at(-1).destroyed)).toBe(false);
+
+  await page.clock.fastForward(1_001);
+  await emitMediaError('bounded-third');
+  expect(await page.evaluate(() => globalThis.__fakeHlsInstances.at(-1).destroyed)).toBe(true);
 });

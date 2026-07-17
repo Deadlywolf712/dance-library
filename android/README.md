@@ -22,10 +22,10 @@ Then run the complete local gate:
 
 ```sh
 cd android
-./gradlew --no-daemon lintDebug testDebugUnitTest assembleDebug
+./gradlew --no-daemon lintDebug testDebugUnitTest assembleDebug assembleRelease
 ```
 
-On Windows, replace `./gradlew` with `gradlew.bat`. The installable debug APK is created at `app/build/outputs/apk/debug/app-debug.apk`.
+On Windows, replace `./gradlew` with `gradlew.bat`. The installable debug APK is created at `app/build/outputs/apk/debug/app-debug.apk`. The release build is intentionally unsigned; assembling it in local and hosted CI verifies the R8 and resource-shrinking path before a release key is configured.
 
 Install it on an attached device with:
 
@@ -47,4 +47,4 @@ Media3 selects the appropriate HLS rendition, retries bounded network failures, 
 
 ## Signing
 
-Debug builds use the standard local Android debug certificate and are suitable for direct testing or sideloading. For store distribution, configure a private release keystore outside the repository. Keystores and signing-property files are intentionally ignored by Git.
+Debug builds use the standard local Android debug certificate and are suitable for direct testing or sideloading. A debug APK can update an installed copy only when both were signed by the same debug key; clean GitHub runners generate temporary keys, so their debug artifacts are test packages rather than a durable update channel. For store distribution, configure a private release keystore outside the repository, increase `versionCode` for every release, and keep the key backed up securely. Keystores and signing-property files are intentionally ignored by Git.

@@ -4,6 +4,8 @@ A dance practice library available as both a build-free GitHub Pages site and a 
 
 Both clients include the website’s category/course/folder organization, focused playback controls, chapter jumps, timestamp bookmarks and notes, searchable favorites and history, compatible import/export, durable resume positions, and the complete theme collection. Android implements those features with a native phone/tablet Compose interface and Media3 rather than wrapping the website in a WebView.
 
+[Download the latest Android APK](https://github.com/Deadlywolf712/dance-library/releases/latest/download/Dance-Library-Android.apk) (Android 7.0 or newer).
+
 ## Run locally
 
 Serve the repository root with any static web server so service workers and streamed media behave like production:

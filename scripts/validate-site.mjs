@@ -19,6 +19,14 @@ const ids = [...index.matchAll(/\sid="([^"]+)"/g)].map(match => match[1]);
 const duplicateIds = [...new Set(ids.filter((id, index) => ids.indexOf(id) !== index))];
 if (duplicateIds.length) fail(`Duplicate HTML IDs: ${duplicateIds.join(', ')}`);
 
+const androidApkUrl = 'https://github.com/Deadlywolf712/dance-library/releases/latest/download/Dance-Library-Android.apk';
+if (!index.includes('id="android-download-link"') || !index.includes(`href="${androidApkUrl}"`)) {
+  fail('The home page must expose the durable Android APK download link.');
+}
+if (!index.includes('target="_blank"') || !index.includes('rel="noopener noreferrer"')) {
+  fail('The external Android download must preserve the library tab safely.');
+}
+
 for (const match of index.matchAll(/(?:src|href)="([^"]+)"/g)) {
   const reference = match[1];
   if (/^(?:https?:|#|mailto:)/.test(reference)) continue;
@@ -119,6 +127,7 @@ const swVersion = sw.match(/CACHE_VERSION\s*=\s*(\d+)/)?.[1];
 if (!appVersion || appVersion !== swVersion) fail('HTML asset version and service-worker cache version differ.');
 const summaryVersion = app.match(/SUMMARY_ASSET_VERSION\s*=\s*(\d+)/)?.[1];
 if (summaryVersion !== swVersion) fail('Summary asset version and service-worker cache version differ.');
+if (!/m4v\|apk/.test(sw)) fail('The service worker must never cache Android installer downloads.');
 for (const asset of ['style.css', 'app.js', 'data.js', 'salsa_course.js', 'playback-core.js']) {
   if (!index.includes(`${asset}?v=${swVersion}`) || !sw.includes(`./${asset}?v=${swVersion}`)) {
     fail(`${asset} must use the current HTML and service-worker asset version.`);

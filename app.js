@@ -43,7 +43,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const HLS_RUNTIME_URL = 'https://cdn.jsdelivr.net/npm/hls.js@1.6.16/dist/hls.min.js';
     const HLS_RUNTIME_INTEGRITY = 'sha384-5E8B0pTlZZJMabWpC0fyYf6OUpe15jJij34BqBAh4NXoHAlLNOjCPRrwtOXOQFAn';
     const HLS_RUNTIME_TIMEOUT_MS = 8000;
-    const SUMMARY_ASSET_VERSION = 11;
+    const SUMMARY_ASSET_VERSION = 12;
     const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
     const preferredScrollBehavior = () => reducedMotionQuery.matches ? 'auto' : 'smooth';
 

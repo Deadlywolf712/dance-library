@@ -1,18 +1,18 @@
 // Resilient offline shell for Dance Library.
 // Navigations use network-first; static assets use stale-while-revalidate.
 
-const CACHE_VERSION = 11;
+const CACHE_VERSION = 12;
 const CACHE_PREFIX = 'dance-library-v';
 const CACHE_NAME = `${CACHE_PREFIX}${CACHE_VERSION}`;
 
 const APP_FILES = [
   './',
   './index.html',
-  './style.css?v=11',
-  './app.js?v=11',
-  './data.js?v=11',
-  './salsa_course.js?v=11',
-  './playback-core.js?v=11',
+  './style.css?v=12',
+  './app.js?v=12',
+  './data.js?v=12',
+  './salsa_course.js?v=12',
+  './playback-core.js?v=12',
   './manifest.json',
   './icon.svg',
   './icon-192.png',
@@ -44,13 +44,13 @@ self.addEventListener('fetch', event => {
   if (request.method !== 'GET') return;
 
   const url = new URL(request.url);
-  const isMedia = request.destination === 'video'
+  const bypassCache = request.destination === 'video'
     || request.destination === 'audio'
-    || /\.(m3u8|ts|mp4|mov|m4v)(?:$|\?)/i.test(url.pathname)
+    || /\.(m3u8|ts|mp4|mov|m4v|apk)(?:$|\?)/i.test(url.pathname)
     || url.hostname.includes('b-cdn.net');
 
-  // Media can be very large and must never be cached or replaced with app HTML.
-  if (isMedia) return;
+  // Media and installers can be very large and must never be cached or replaced with app HTML.
+  if (bypassCache) return;
 
   if (url.origin === self.location.origin) {
     if (request.mode === 'navigate') {

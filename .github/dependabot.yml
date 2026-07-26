@@ -10,6 +10,16 @@ updates:
           - "*"
     open-pull-requests-limit: 5
 
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: monthly
+    groups:
+      npm-dependencies:
+        patterns:
+          - "*"
+    open-pull-requests-limit: 5
+
   - package-ecosystem: gradle
     directory: "/android"
     schedule:

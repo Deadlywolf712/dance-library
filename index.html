@@ -17,12 +17,16 @@
   <meta name="theme-color" content="#e8ecf0">
   <meta name="color-scheme" content="light dark">
   <meta name="referrer" content="strict-origin-when-cross-origin">
+  <meta
+    http-equiv="Content-Security-Policy"
+    content="default-src 'self'; base-uri 'self'; object-src 'none'; frame-src 'none'; form-action 'self'; script-src 'self' https://cdn.jsdelivr.net; script-src-attr 'none'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; media-src 'self' blob: https://*.b-cdn.net; connect-src 'self' https://*.b-cdn.net https://fonts.googleapis.com https://fonts.gstatic.com; manifest-src 'self'; worker-src 'self' blob:; upgrade-insecure-requests"
+  >
   <link rel="icon" href="./icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="./icon-192.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&amp;family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400;1,600&amp;display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=12">
+  <link rel="stylesheet" href="style.css?v=13">
   <link rel="manifest" href="manifest.json">
   <!-- Loading spinner (shown while data.js loads) -->
   <style>
@@ -34,10 +38,11 @@
     @keyframes spin { to { transform: rotate(360deg); } }
   </style>
   <!-- Local catalog scripts are deferred in order so the loading screen can paint first. -->
-  <script defer src="data.js?v=12"></script>
-  <script defer src="salsa_course.js?v=12"></script>
-  <script defer src="playback-core.js?v=12"></script>
-  <script defer src="app.js?v=12"></script>
+  <script defer src="data.js?v=13"></script>
+  <script defer src="salsa_course.js?v=13"></script>
+  <script defer src="playback-core.js?v=13"></script>
+  <script defer src="app.js?v=13"></script>
+  <script defer src="sw-register.js?v=13"></script>
 </head>
 <body>
   <a class="skip-link" href="#main-content">Skip to library content</a>
@@ -688,15 +693,5 @@
   </div>
 
   <div id="app-status" class="app-status" role="status" aria-live="polite" aria-atomic="true"></div>
-  <script>
-    window.addEventListener('load', () => {
-      if (!('serviceWorker' in navigator)) return;
-      navigator.serviceWorker.register('./sw.js').catch(error => {
-        console.warn('Offline mode could not start:', error);
-        const status = document.getElementById('app-status');
-        if (status) status.textContent = 'Offline mode is unavailable in this browser session.';
-      });
-    });
-  </script>
 </body>
 </html>

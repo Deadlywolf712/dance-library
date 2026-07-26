@@ -38,12 +38,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const compactLayoutQuery = window.matchMedia('(max-width: 900px)');
     const usesCompactLayout = () => compactLayoutQuery.matches;
     const checkIsMobile = () => usesCompactLayout() || /Mobi|Android/i.test(navigator.userAgent);
-    const isHosted = location.hostname.includes('github.io') || location.protocol === 'https:';
+    const isHosted = location.protocol === 'https:';
     const canUseLocalMedia = location.protocol === 'file:' || ['localhost', '127.0.0.1', '::1'].includes(location.hostname);
     const HLS_RUNTIME_URL = 'https://cdn.jsdelivr.net/npm/hls.js@1.6.16/dist/hls.min.js';
     const HLS_RUNTIME_INTEGRITY = 'sha384-5E8B0pTlZZJMabWpC0fyYf6OUpe15jJij34BqBAh4NXoHAlLNOjCPRrwtOXOQFAn';
     const HLS_RUNTIME_TIMEOUT_MS = 8000;
-    const SUMMARY_ASSET_VERSION = 12;
+    const SUMMARY_ASSET_VERSION = 13;
     const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
     const preferredScrollBehavior = () => reducedMotionQuery.matches ? 'auto' : 'smooth';
 
@@ -158,6 +158,46 @@ document.addEventListener('DOMContentLoaded', () => {
             .replace(/'/g, '&#039;');
     }
 
+    function normalizeBunnyPullZone(value) {
+        const raw = String(value ?? '').trim();
+        if (!raw) return '';
+
+        try {
+            const candidate = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : `https://${raw}`);
+            const hostname = candidate.hostname.toLowerCase().replace(/\.$/, '');
+            const isBunnyHostname = hostname.length > '.b-cdn.net'.length && hostname.endsWith('.b-cdn.net');
+            const hasUnexpectedUrlParts = candidate.protocol !== 'https:'
+                || candidate.username
+                || candidate.password
+                || candidate.port
+                || candidate.pathname !== '/'
+                || candidate.search
+                || candidate.hash;
+            return isBunnyHostname && !hasUnexpectedUrlParts ? hostname : '';
+        } catch (_) {
+            return '';
+        }
+    }
+
+    function resolveLocalVideoUrl(videoPath) {
+        const path = String(videoPath ?? '');
+        if (!Object.prototype.hasOwnProperty.call(videoData, path)) return '';
+
+        const segments = path.split('/');
+        if (!segments.length
+            || segments.some(segment => !segment || segment === '.' || segment === '..')
+            || !VIDEO_EXTENSION_RE.test(segments[segments.length - 1])) {
+            return '';
+        }
+
+        const baseUrl = new URL('./', document.baseURI);
+        const candidate = new URL(segments.map(encodeURIComponent).join('/'), baseUrl);
+        const staysWithinLibrary = candidate.protocol === baseUrl.protocol
+            && candidate.host === baseUrl.host
+            && candidate.pathname.startsWith(baseUrl.pathname);
+        return staysWithinLibrary ? candidate.href : '';
+    }
+
     async function copyText(text) {
         if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
             try {
@@ -204,7 +244,9 @@ document.addEventListener('DOMContentLoaded', () => {
         watched: new Set(safeLoad('watchedVideos', [], Array.isArray)),
         useBunny: isHosted || checkIsMobile() ? true : (safeGet('useBunny', 'false') === 'true'),
         theme: safeGet('theme', 'arctic'),
-        bunnyPullZone: safeGet('bunny_pull_zone', typeof BUNNY_PULL_ZONE !== 'undefined' ? BUNNY_PULL_ZONE : ''),
+        bunnyPullZone: normalizeBunnyPullZone(
+            safeGet('bunny_pull_zone', typeof BUNNY_PULL_ZONE !== 'undefined' ? BUNNY_PULL_ZONE : '')
+        ),
         loopA: null,
         loopB: null,
         playbackSpeed: 1.0,
@@ -346,6 +388,7 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.sourceToggle.disabled = isHosted;
         elements.themeSelect.value = state.theme;
         updateNotesBadge();
+        document.body.dataset.appReady = 'true';
 
         // Hide loading spinner
         if (loader) { loader.style.opacity = '0'; setTimeout(() => loader.remove(), 300); }
@@ -766,10 +809,10 @@ document.addEventListener('DOMContentLoaded', () => {
             headerBtn.innerHTML = `
                 <button type="button" class="nav-folder-toggle">
                     ${iconSvg}
-                    <span style="word-break: break-word; line-height: 1.3; font-size: 0.95em; padding-right: 8px;">${folderName}</span>
+                    <span style="word-break: break-word; line-height: 1.3; font-size: 0.95em; padding-right: 8px;">${escapeHtml(folderName)}</span>
                     <svg class="chevron" viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>
                 </button>
-                <button type="button" class="open-tiles-btn" title="Open in tile view" aria-label="Open ${folderName} in tile view">
+                <button type="button" class="open-tiles-btn" title="Open in tile view" aria-label="Open ${escapeHtml(folderName)} in tile view">
                     ${gridIconSvg}
                 </button>
             `;
@@ -984,22 +1027,46 @@ document.addEventListener('DOMContentLoaded', () => {
         // Render Breadcrumbs for Home View
         const homeHeader = document.getElementById('home-breadcrumbs');
         homeHeader.hidden = path.length === 0;
-        let breadcrumbHtml = `<a href="#" class="home-crumb" data-level="-1" style="color:var(--accent); text-decoration:none;">Library Home</a>`;
+        homeHeader.replaceChildren();
+
+        const homeCrumb = document.createElement('a');
+        homeCrumb.href = '#';
+        homeCrumb.className = 'home-crumb';
+        homeCrumb.dataset.level = '-1';
+        homeCrumb.style.color = 'var(--accent)';
+        homeCrumb.style.textDecoration = 'none';
+        homeCrumb.textContent = 'Library Home';
+        homeHeader.appendChild(homeCrumb);
         
         path.forEach((p, idx) => {
+            const separator = document.createElement('span');
+            separator.style.margin = '0 6px';
+            separator.style.color = 'var(--text-muted)';
+            separator.textContent = '/';
+            homeHeader.appendChild(separator);
+
             if (idx === path.length - 1) {
-                breadcrumbHtml += ` <span style="margin: 0 6px; color: var(--text-muted);">/</span> <span style="color:var(--text-main)">${p}</span>`;
+                const current = document.createElement('span');
+                current.style.color = 'var(--text-main)';
+                current.textContent = p;
+                homeHeader.appendChild(current);
             } else {
-                breadcrumbHtml += ` <span style="margin: 0 6px; color: var(--text-muted);">/</span> <a href="#" class="home-crumb" data-level="${idx}" style="color:var(--accent); text-decoration:none;">${p}</a>`;
+                const crumb = document.createElement('a');
+                crumb.href = '#';
+                crumb.className = 'home-crumb';
+                crumb.dataset.level = String(idx);
+                crumb.style.color = 'var(--accent)';
+                crumb.style.textDecoration = 'none';
+                crumb.textContent = p;
+                homeHeader.appendChild(crumb);
             }
         });
-        homeHeader.innerHTML = breadcrumbHtml;
         
         // Attach crumb events
         homeHeader.querySelectorAll('.home-crumb').forEach(link => {
             link.addEventListener('click', (e) => {
                 e.preventDefault();
-                const level = parseInt(e.target.dataset.level);
+                const level = parseInt(e.currentTarget.dataset.level);
                 if (level === -1) {
                     renderHomeTiles(null, []);
                 } else if (level === 0) {
@@ -1031,9 +1098,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 const courseHeader = document.createElement('div');
                 courseHeader.className = 'course-intro-block';
                 courseHeader.innerHTML = `
-                    <div class="course-intro-title">${salsaCourseData.title}</div>
-                    <div class="course-intro-subtitle">${salsaCourseData.subtitle}</div>
-                    <p class="course-intro-text">${salsaCourseData.intro}</p>
+                    <div class="course-intro-title">${escapeHtml(salsaCourseData.title)}</div>
+                    <div class="course-intro-subtitle">${escapeHtml(salsaCourseData.subtitle)}</div>
+                    <p class="course-intro-text">${escapeHtml(salsaCourseData.intro)}</p>
                 `;
                 elements.courseGrid.appendChild(courseHeader);
             }
@@ -1041,19 +1108,19 @@ document.addEventListener('DOMContentLoaded', () => {
             // Folder-level description
             if (folderKey && salsaCourseData.folders[folderKey]) {
                 const info = salsaCourseData.folders[folderKey];
-                let descHtml = `<p class="course-desc-text">${info.description}</p>`;
+                let descHtml = `<p class="course-desc-text">${escapeHtml(info.description)}</p>`;
                 if (info.prerequisites) {
                     descHtml += '<div class="course-prereqs">';
                     if (info.prerequisites.on1) {
-                        descHtml += '<div class="course-prereq-col"><strong>Prerequisites On1:</strong><ul>' + info.prerequisites.on1.map(p => `<li>${p}</li>`).join('') + '</ul></div>';
+                        descHtml += '<div class="course-prereq-col"><strong>Prerequisites On1:</strong><ul>' + info.prerequisites.on1.map(p => `<li>${escapeHtml(p)}</li>`).join('') + '</ul></div>';
                     }
                     if (info.prerequisites.on2) {
-                        descHtml += '<div class="course-prereq-col"><strong>Prerequisites On2:</strong><ul>' + info.prerequisites.on2.map(p => `<li>${p}</li>`).join('') + '</ul></div>';
+                        descHtml += '<div class="course-prereq-col"><strong>Prerequisites On2:</strong><ul>' + info.prerequisites.on2.map(p => `<li>${escapeHtml(p)}</li>`).join('') + '</ul></div>';
                     }
                     descHtml += '</div>';
                 }
-                if (info.tips) descHtml += `<p class="course-tips"><strong>Tips:</strong> ${info.tips}</p>`;
-                if (info.song) descHtml += `<p class="course-song">&#9835; ${info.song}</p>`;
+                if (info.tips) descHtml += `<p class="course-tips"><strong>Tips:</strong> ${escapeHtml(info.tips)}</p>`;
+                if (info.song) descHtml += `<p class="course-song">&#9835; ${escapeHtml(info.song)}</p>`;
 
                 const descBlock = document.createElement('div');
                 descBlock.className = 'course-desc-block';
@@ -1127,13 +1194,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 tile.style.borderLeft = `3px solid ${styleColors[favStyle] || styleColors['Other']}`;
                 tile.innerHTML = `
                     <div class="tile-action-row">
-                        <button type="button" class="tile-main-btn" aria-label="Play ${title}" ${isRemoved ? 'disabled' : ''}>
+                        <button type="button" class="tile-main-btn" aria-label="Play ${escapeHtml(title)}" ${isRemoved ? 'disabled' : ''}>
                             <svg viewBox="0 0 24 24" width="20" height="20" stroke="var(--accent)" stroke-width="2" fill="${isRemoved ? 'none' : 'var(--accent)'}" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
-                            <span class="video-tile-title">${title}</span>
+                            <span class="video-tile-title">${escapeHtml(title)}</span>
                         </button>
-                        <button type="button" class="tile-fav-toggle" data-path="${favPath}" title="${isRemoved ? 'Re-favorite' : 'Unfavorite'}">${isRemoved ? 'Re-favorite' : 'Unfavorite'}</button>
+                        <button type="button" class="tile-fav-toggle" data-path="${escapeHtml(favPath)}" title="${isRemoved ? 'Re-favorite' : 'Unfavorite'}">${isRemoved ? 'Re-favorite' : 'Unfavorite'}</button>
                     </div>
-                    <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: auto; opacity: 0.7;">${parts.join(' / ')}</p>
+                    <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: auto; opacity: 0.7;">${escapeHtml(parts.join(' / '))}</p>
                 `;
                 tile.querySelector('.tile-main-btn').addEventListener('click', () => loadVideo(videoObj));
                 // Toggle button
@@ -1190,10 +1257,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     tile.innerHTML = `
                         <div style="display: flex; align-items: flex-start; margin-bottom: 2px;">
                             <svg viewBox="0 0 24 24" width="20" height="20" stroke="var(--accent)" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="margin-right:10px; min-width:20px; margin-top: 2px;"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-                            <h3 class="video-tile-title" style="margin-bottom: 0; color: var(--text-main); font-weight: normal; line-height: 1.4;">${title}</h3>
+                            <h3 class="video-tile-title" style="margin-bottom: 0; color: var(--text-main); font-weight: normal; line-height: 1.4;">${escapeHtml(title)}</h3>
                         </div>
                         <p style="font-size: 0.75rem; color: var(--text-muted); margin: 4px 0 0 0;">at ${formatTime(entry.time)}${agoText ? ' · ' + agoText : ''}</p>
-                        <p style="font-size: 0.7rem; color: var(--text-muted); margin-top: 4px; opacity: 0.7;">${parts.join(' / ')}</p>
+                        <p style="font-size: 0.7rem; color: var(--text-muted); margin-top: 4px; opacity: 0.7;">${escapeHtml(parts.join(' / '))}</p>
                     `;
                     tile.addEventListener('click', () => loadVideo(videoObj));
                     makeKeyboardAccessible(tile, () => loadVideo(videoObj), `Resume ${title} from ${formatTime(entry.time)}`);
@@ -1238,13 +1305,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     card.style.backgroundColor = 'var(--bg-base)';
 
                     // Video title header (clickable → load video)
-                    let notesHtml = `<div class="recent-notes-video-title" data-path="${nv.path}" role="button" tabindex="0">${nv.title}</div>`;
-                    notesHtml += `<div style="font-size: 0.7rem; color: var(--text-muted); opacity: 0.6; margin-bottom: 8px;">${nv.folder}</div>`;
+                    let notesHtml = `<div class="recent-notes-video-title" data-path="${escapeHtml(nv.path)}" role="button" tabindex="0">${escapeHtml(nv.title)}</div>`;
+                    notesHtml += `<div style="font-size: 0.7rem; color: var(--text-muted); opacity: 0.6; margin-bottom: 8px;">${escapeHtml(nv.folder)}</div>`;
 
                     // Individual notes (clickable → seek to timestamp)
                     for (const note of nv.notes) {
-                        const escapedNote = (note.n || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                        notesHtml += `<div class="recent-note-entry" data-path="${nv.path}" data-time="${note.t}" role="button" tabindex="0">
+                        const escapedNote = escapeHtml(note.n || '');
+                        notesHtml += `<div class="recent-note-entry" data-path="${escapeHtml(nv.path)}" data-time="${escapeHtml(note.t)}" role="button" tabindex="0">
                             <span style="color: var(--accent); font-size: 0.7rem; flex-shrink: 0;">${formatTime(note.t)}</span>
                             <span style="font-size: 0.8rem; color: var(--text-main);">"${escapedNote}"</span>
                         </div>`;
@@ -1307,20 +1374,20 @@ document.addEventListener('DOMContentLoaded', () => {
             if (typeof salsaCourseData !== 'undefined' && path.length > 0 && path[0] === 'Salsa Masterclass') {
                 const weekInfo = salsaCourseData.weeks && salsaCourseData.weeks[fName];
                 if (weekInfo) {
-                    tileSubtitle = `<p class="tile-course-subtitle">${weekInfo.title}: ${weekInfo.description}</p>`;
+                    tileSubtitle = `<p class="tile-course-subtitle">${escapeHtml(weekInfo.title)}: ${escapeHtml(weekInfo.description)}</p>`;
                 } else {
                     const folderKey = [...path.slice(1), fName].join('/');
                     const folderInfo = salsaCourseData.folders[folderKey];
                     if (folderInfo && folderInfo.description) {
                         const short = folderInfo.description.length > 100 ? folderInfo.description.substring(0, 100) + '...' : folderInfo.description;
-                        tileSubtitle = `<p class="tile-course-subtitle">${short}</p>`;
+                        tileSubtitle = `<p class="tile-course-subtitle">${escapeHtml(short)}</p>`;
                     }
                 }
             }
             tile.innerHTML = `
                 <div style="display: flex; align-items: flex-start; margin-bottom: 2px;">
                     <svg viewBox="0 0 24 24" width="28" height="28" stroke="${tileColor}" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="margin-right:12px; min-width:28px"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
-                    <h3 style="margin-bottom: 0; color: var(--text-main); word-break: break-word; margin-top: 3px;">${fName}</h3>
+                    <h3 style="margin-bottom: 0; color: var(--text-main); word-break: break-word; margin-top: 3px;">${escapeHtml(fName)}</h3>
                 </div>
                 ${tileSubtitle}
                 <div class="tile-progress-area">
@@ -1360,11 +1427,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 const watchedAgo = watchedAt ? timeAgo(watchedAt) : '';
                 tile.innerHTML = `
                     <div class="tile-action-row">
-                        <button type="button" class="tile-main-btn" aria-label="Play ${video.title}">
+                        <button type="button" class="tile-main-btn" aria-label="Play ${escapeHtml(video.title)}">
                             <svg viewBox="0 0 24 24" width="20" height="20" stroke="var(--text-muted)" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-                            <span class="video-tile-title">${video.title}</span>
+                            <span class="video-tile-title">${escapeHtml(video.title)}</span>
                         </button>
-                        <button type="button" class="tile-star-btn${isFav ? ' tile-star-active' : ''}" data-path="${video.path}" title="${isFav ? 'Remove from favorites' : 'Add to favorites'}" aria-label="${isFav ? 'Remove from favorites' : 'Add to favorites'}: ${video.title}" aria-pressed="${isFav}">
+                        <button type="button" class="tile-star-btn${isFav ? ' tile-star-active' : ''}" data-path="${escapeHtml(video.path)}" title="${isFav ? 'Remove from favorites' : 'Add to favorites'}" aria-label="${isFav ? 'Remove from favorites' : 'Add to favorites'}: ${escapeHtml(video.title)}" aria-pressed="${isFav}">
                             <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="${isFav ? 'currentColor' : 'none'}" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
                         </button>
                     </div>
@@ -1588,20 +1655,37 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         // Deduplicate consecutive identical segments (e.g. "Salsa Masterclass / Salsa Masterclass")
-        let breadcrumbHtml = '';
+        elements.videoBreadcrumb.replaceChildren();
+        let breadcrumbCount = 0;
         let prevPart = '';
         fullPathForBreadcrumb.forEach((part, index) => {
             if (part === prevPart) return; // skip consecutive duplicates
             prevPart = part;
             // Store the path slice up to this point so we can render the exact folder view
             const pathSlice = fullPathForBreadcrumb.slice(1, index + 1);
-            if (breadcrumbHtml) breadcrumbHtml += `<span style="margin: 0 6px; color: var(--text-muted);">/</span>`;
-            breadcrumbHtml += `<a href="#" class="breadcrumb-link" data-level="${index}" data-path='${JSON.stringify(pathSlice)}' style="color: var(--text-main); text-decoration: none; transition: color 0.2s;">${part}</a>`;
+            if (breadcrumbCount > 0) {
+                const separator = document.createElement('span');
+                separator.style.margin = '0 6px';
+                separator.style.color = 'var(--text-muted)';
+                separator.textContent = '/';
+                elements.videoBreadcrumb.appendChild(separator);
+            }
+
+            const crumb = document.createElement('a');
+            crumb.href = '#';
+            crumb.className = 'breadcrumb-link';
+            crumb.dataset.level = String(index);
+            crumb.dataset.path = JSON.stringify(pathSlice);
+            crumb.style.color = 'var(--text-main)';
+            crumb.style.textDecoration = 'none';
+            crumb.style.transition = 'color 0.2s';
+            crumb.textContent = part;
+            elements.videoBreadcrumb.appendChild(crumb);
+            breadcrumbCount += 1;
         });
-        elements.videoBreadcrumb.innerHTML = breadcrumbHtml;
         
         // Attach listeners to breadcrumb links to go back to Home Tiles View
-        document.querySelectorAll('.breadcrumb-link').forEach(link => {
+        elements.videoBreadcrumb.querySelectorAll('.breadcrumb-link').forEach(link => {
             link.addEventListener('click', (e) => {
                 e.preventDefault();
                 const level = parseInt(e.currentTarget.dataset.level);
@@ -1802,8 +1886,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
         function playLocalFile() {
             if (!sourceIsCurrent(requestId, requestedVideo)) return;
+            const localVideoUrl = resolveLocalVideoUrl(requestedVideo.path);
+            if (!localVideoUrl) {
+                showVideoRetry('The local video path is invalid. Choose a lesson from the library and try again.', requestId);
+                return;
+            }
             attachReadyAndErrorHandlers('Local video');
-            video.src = encodeURI(requestedVideo.path);
+            video.src = localVideoUrl;
         }
 
         function playNativeHls(streamUrl) {
@@ -1828,8 +1917,11 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        // Clean pull zone hostname (remove https:// or trailing slashes if user pasted them)
-        const host = state.bunnyPullZone.replace('https://', '').replace('http://', '').split('/')[0];
+        const host = normalizeBunnyPullZone(state.bunnyPullZone);
+        if (!host) {
+            handleUnavailableStream('The Bunny pull-zone hostname is invalid.');
+            return;
+        }
         const streamUrl = `https://${host}/${requestedVideo.bunny_id}/playlist.m3u8`;
         const nativeHlsSupported = Boolean(video.canPlayType('application/vnd.apple.mpegurl'));
         const mediaSourceAvailable = Boolean(globalThis.MediaSource || globalThis.ManagedMediaSource);
@@ -2476,10 +2568,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
         elements.saveSettings.addEventListener('click', () => {
             const inputVal = elements.bunnyLibInput.value.trim();
-            if (inputVal && !inputVal.includes('.b-cdn.net')) {
-                alert("Warning: Bunny Pull Zone usually ends in .b-cdn.net (e.g. vz-123.b-cdn.net)");
+            const normalizedPullZone = normalizeBunnyPullZone(inputVal);
+            if (inputVal && !normalizedPullZone) {
+                alert('Enter a valid HTTPS Bunny pull-zone hostname ending in .b-cdn.net (for example, vz-123.b-cdn.net).');
+                return;
             }
-            state.bunnyPullZone = inputVal;
+            state.bunnyPullZone = normalizedPullZone;
+            elements.bunnyLibInput.value = normalizedPullZone;
             safeStore('bunny_pull_zone', state.bunnyPullZone);
             elements.settingsModal.style.display = 'none';
             
@@ -2534,28 +2629,45 @@ document.addEventListener('DOMContentLoaded', () => {
         themeFavBtn = document.getElementById('theme-fav-btn');
 
         function renderFavThemes() {
+            favThemesRow.replaceChildren();
             if (favThemes.size === 0) {
                 favThemesRow.style.display = 'none';
                 return;
             }
             favThemesRow.style.display = 'flex';
-            let html = '';
             for (const tv of favThemes) {
                 // Find the display name from the select options
                 const opt = [...elements.themeSelect.options].find(o => o.value === tv);
                 const label = opt ? opt.textContent : tv;
                 const isCurrent = state.theme === tv;
-                html += `<div class="fav-theme-chip ${isCurrent ? 'current' : ''}" role="group" aria-label="${label} theme">
-                    <button type="button" class="fav-theme-apply" data-theme="${tv}" aria-pressed="${isCurrent}">${label}</button>
-                    <button type="button" class="fav-theme-remove" data-theme="${tv}" aria-label="Remove ${label} from favorite themes">&times;</button>
-                </div>`;
+
+                const chip = document.createElement('div');
+                chip.className = `fav-theme-chip${isCurrent ? ' current' : ''}`;
+                chip.setAttribute('role', 'group');
+                chip.setAttribute('aria-label', `${label} theme`);
+
+                const applyButton = document.createElement('button');
+                applyButton.type = 'button';
+                applyButton.className = 'fav-theme-apply';
+                applyButton.dataset.theme = tv;
+                applyButton.setAttribute('aria-pressed', String(isCurrent));
+                applyButton.textContent = label;
+
+                const removeButton = document.createElement('button');
+                removeButton.type = 'button';
+                removeButton.className = 'fav-theme-remove';
+                removeButton.dataset.theme = tv;
+                removeButton.setAttribute('aria-label', `Remove ${label} from favorite themes`);
+                removeButton.textContent = '\u00D7';
+
+                chip.append(applyButton, removeButton);
+                favThemesRow.appendChild(chip);
             }
-            favThemesRow.innerHTML = html;
         }
 
         function updateThemeFavBtn() {
             const isFav = favThemes.has(state.theme);
-            themeFavBtn.innerHTML = isFav ? '&#9733;' : '&#9734;';
+            themeFavBtn.textContent = isFav ? '\u2605' : '\u2606';
             themeFavBtn.classList.toggle('active', isFav);
             themeFavBtn.title = isFav ? 'Unfavorite this theme' : 'Favorite this theme';
             themeFavBtn.setAttribute('aria-label', themeFavBtn.title);
@@ -3230,7 +3342,7 @@ document.addEventListener('DOMContentLoaded', () => {
             pill.setAttribute('role', 'group');
             pill.dataset.time = bk.t;
             pill.dataset.index = idx;
-            const noteText = bk.n ? ` <span class="bookmark-note-text">\u2014 ${bk.n.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</span>` : '';
+            const noteText = bk.n ? ` <span class="bookmark-note-text">\u2014 ${escapeHtml(bk.n)}</span>` : '';
             pill.innerHTML = `<button type="button" class="bookmark-open" aria-label="Play from ${formatTime(bk.t)}"><span class="bookmark-time-text">${formatTime(bk.t)}</span>${noteText}</button><button type="button" class="bookmark-edit-icon" data-idx="${idx}" aria-label="Edit bookmark note">&#9998;</button><button type="button" class="bookmark-delete" data-idx="${idx}" aria-label="Delete bookmark">&times;</button>`;
             elements.bookmarksList.appendChild(pill);
         });
@@ -3487,21 +3599,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 filtered.forEach((bk) => {
                     // Find the real index in the full (unfiltered) sorted array
                     const realIdx = bookmarks.findIndex(b => b.t === bk.t && b.n === bk.n);
-                    const escapedNote = (bk.n || '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    const escapedNote = escapeHtml(bk.n || '');
                     const hasNote = !!bk.n;
                     const noteAgo = bk.ts ? `<span class="notes-bookmark-ago">${timeAgo(bk.ts)}</span>` : '';
                     const noteHtml = hasNote
                         ? `<span class="notes-bookmark-note">${escapedNote}</span>${noteAgo}`
                         : '<span class="notes-bookmark-notext">No note</span>';
-                    itemsHtml += `<div class="notes-bookmark-item ${hasNote ? 'has-note' : ''}" data-path="${videoPath}" data-time="${bk.t}" data-bk-idx="${realIdx}" role="group">
-                        <div class="notes-bookmark-open" role="button" tabindex="0" data-path="${videoPath}" data-time="${bk.t}">
+                    itemsHtml += `<div class="notes-bookmark-item ${hasNote ? 'has-note' : ''}" data-path="${escapeHtml(videoPath)}" data-time="${escapeHtml(bk.t)}" data-bk-idx="${realIdx}" role="group">
+                        <div class="notes-bookmark-open" role="button" tabindex="0" data-path="${escapeHtml(videoPath)}" data-time="${escapeHtml(bk.t)}">
                             <span class="notes-bookmark-time">${formatTime(bk.t)}</span>
                             <span class="notes-bookmark-text-wrap">${noteHtml}</span>
                         </div>
                         <span class="notes-item-actions">
-                            <button type="button" class="notes-item-copy" data-path="${videoPath}" data-time="${bk.t}" data-note="${escapedNote}" aria-label="Copy note">&#128203;</button>
-                            <button type="button" class="notes-item-edit" data-path="${videoPath}" data-bk-idx="${realIdx}" data-note="${escapedNote}" aria-label="Edit note">&#9998;</button>
-                            <button type="button" class="notes-item-delete" data-path="${videoPath}" data-bk-idx="${realIdx}" aria-label="Delete bookmark">&times;</button>
+                            <button type="button" class="notes-item-copy" data-path="${escapeHtml(videoPath)}" data-time="${escapeHtml(bk.t)}" data-note="${escapedNote}" aria-label="Copy note">&#128203;</button>
+                            <button type="button" class="notes-item-edit" data-path="${escapeHtml(videoPath)}" data-bk-idx="${realIdx}" data-note="${escapedNote}" aria-label="Edit note">&#9998;</button>
+                            <button type="button" class="notes-item-delete" data-path="${escapeHtml(videoPath)}" data-bk-idx="${realIdx}" aria-label="Delete bookmark">&times;</button>
                         </span>
                     </div>`;
                 });
@@ -3509,8 +3621,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 group.innerHTML = `
                     <div class="notes-video-header">
                         <div>
-                            <button type="button" class="notes-video-title" data-path="${videoPath}">${videoObj.title}</button>
-                            <div class="notes-video-path">${videoObj.folderPath}</div>
+                            <button type="button" class="notes-video-title" data-path="${escapeHtml(videoPath)}">${escapeHtml(videoObj.title)}</button>
+                            <div class="notes-video-path">${escapeHtml(videoObj.folderPath)}</div>
                         </div>
                     </div>
                     ${itemsHtml}
@@ -3519,7 +3631,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             if (!hasVisibleItems && notesFilterMode === 'notes-only') {
-                section.innerHTML += '<div class="notes-empty">No bookmarks with notes yet. Add notes to your bookmarks from the video page.</div>';
+                const empty = document.createElement('div');
+                empty.className = 'notes-empty';
+                empty.textContent = 'No bookmarks with notes yet. Add notes to your bookmarks from the video page.';
+                section.appendChild(empty);
             }
 
             notesContent.appendChild(section);
@@ -3770,7 +3885,7 @@ document.addEventListener('DOMContentLoaded', () => {
             result.setAttribute('role', 'option');
             result.setAttribute('aria-selected', String(i === 0));
             result.className = 'spotlight-result' + (i === 0 ? ' active' : '');
-            result.innerHTML = `<span class="spotlight-result-title">${m.title}</span><span class="spotlight-result-path">${m.folderPath}</span>`;
+            result.innerHTML = `<span class="spotlight-result-title">${escapeHtml(m.title)}</span><span class="spotlight-result-path">${escapeHtml(m.folderPath)}</span>`;
             result.addEventListener('click', () => {
                 const videoObj = { title: m.title, path: m.path, ...m.info };
                 closeSpotlight({ restoreFocus: false });
@@ -3931,11 +4046,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const resumeTime = positions[entry.path];
             const resumeStr = resumeTime ? formatTime(resumeTime) : '';
 
-            html += `<div class="history-item" data-path="${entry.path}" role="button" tabindex="0" style="cursor: pointer;">
+            html += `<div class="history-item" data-path="${escapeHtml(entry.path)}" role="button" tabindex="0" style="cursor: pointer;">
                 <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 10px;">
                     <div style="min-width: 0; flex: 1;">
-                        <div style="font-weight: 500; color: var(--text-main); margin-bottom: 2px; word-break: break-word;">${title}</div>
-                        <div style="font-size: 0.75rem; color: var(--text-muted); opacity: 0.7;">${folder}</div>
+                        <div style="font-weight: 500; color: var(--text-main); margin-bottom: 2px; word-break: break-word;">${escapeHtml(title)}</div>
+                        <div style="font-size: 0.75rem; color: var(--text-muted); opacity: 0.7;">${escapeHtml(folder)}</div>
                     </div>
                     <div style="text-align: right; flex-shrink: 0;">
                         ${ago ? `<div style="font-size: 0.75rem; color: var(--text-muted);">${ago}</div>` : ''}
@@ -4033,15 +4148,15 @@ document.addEventListener('DOMContentLoaded', () => {
             matchCount++;
 
             const isUnfavorited = favPendingUnfavs.has(favPath);
-            html += `<div class="notes-fav-item ${isUnfavorited ? 'notes-fav-removed' : ''}" data-path="${favPath}" role="group" aria-label="${videoObj.title}">
-                <button type="button" class="notes-fav-open" data-path="${favPath}" ${isUnfavorited ? 'disabled' : ''}>
+            html += `<div class="notes-fav-item ${isUnfavorited ? 'notes-fav-removed' : ''}" data-path="${escapeHtml(favPath)}" role="group" aria-label="${escapeHtml(videoObj.title)}">
+                <button type="button" class="notes-fav-open" data-path="${escapeHtml(favPath)}" ${isUnfavorited ? 'disabled' : ''}>
                     <span class="notes-fav-star">${isUnfavorited ? '&#9734;' : '&#9733;'}</span>
                     <span style="flex:1;min-width:0;">
-                        <span class="notes-fav-title">${videoObj.title}</span>
-                        <span class="notes-fav-path">${videoObj.folderPath}</span>
+                        <span class="notes-fav-title">${escapeHtml(videoObj.title)}</span>
+                        <span class="notes-fav-path">${escapeHtml(videoObj.folderPath)}</span>
                     </span>
                 </button>
-                <button type="button" class="notes-fav-toggle" data-path="${favPath}" title="${isUnfavorited ? 'Re-favorite' : 'Remove from favorites'}">
+                <button type="button" class="notes-fav-toggle" data-path="${escapeHtml(favPath)}" title="${isUnfavorited ? 'Re-favorite' : 'Remove from favorites'}">
                     ${isUnfavorited ? 'Re-favorite' : 'Unfavorite'}
                 </button>
             </div>`;

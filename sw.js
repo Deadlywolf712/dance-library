@@ -1,18 +1,19 @@
 // Resilient offline shell for Dance Library.
 // Navigations use network-first; static assets use stale-while-revalidate.
 
-const CACHE_VERSION = 12;
+const CACHE_VERSION = 13;
 const CACHE_PREFIX = 'dance-library-v';
 const CACHE_NAME = `${CACHE_PREFIX}${CACHE_VERSION}`;
 
 const APP_FILES = [
   './',
   './index.html',
-  './style.css?v=12',
-  './app.js?v=12',
-  './data.js?v=12',
-  './salsa_course.js?v=12',
-  './playback-core.js?v=12',
+  './style.css?v=13',
+  './app.js?v=13',
+  './data.js?v=13',
+  './salsa_course.js?v=13',
+  './playback-core.js?v=13',
+  './sw-register.js?v=13',
   './manifest.json',
   './icon.svg',
   './icon-192.png',
@@ -47,7 +48,7 @@ self.addEventListener('fetch', event => {
   const bypassCache = request.destination === 'video'
     || request.destination === 'audio'
     || /\.(m3u8|ts|mp4|mov|m4v|apk)(?:$|\?)/i.test(url.pathname)
-    || url.hostname.includes('b-cdn.net');
+    || url.hostname.endsWith('.b-cdn.net');
 
   // Media and installers can be very large and must never be cached or replaced with app HTML.
   if (bypassCache) return;

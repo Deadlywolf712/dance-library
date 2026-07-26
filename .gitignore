@@ -41,6 +41,24 @@ android/local.properties
 *.keystore
 keystore.properties
 
+# Local credentials and secret material
+.env
+.env.*
+!.env.example
+.secrets/
+secrets/
+*.pem
+*.key
+*.p12
+*.pfx
+*.kdbx
+id_rsa*
+id_ed25519*
+credentials*.json
+service-account*.json
+secrets*.json
+android/**/google-services.json
+
 # Backend/tooling scripts
 ai_backend.py
 generate_data_js.py

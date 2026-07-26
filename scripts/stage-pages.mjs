@@ -13,6 +13,7 @@ export const PUBLIC_FILES = Object.freeze([
   'style.css',
   'playback-core.js',
   'salsa_course.js',
+  'sw-register.js',
   'sw.js',
   'manifest.json',
   'icon.svg',

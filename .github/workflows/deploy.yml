@@ -24,34 +24,12 @@ on:
       - 'scripts/validate-site.mjs'
       - 'style.css'
       - 'summaries/**'
+      - 'sw-register.js'
       - 'sw.js'
       - 'tests/**'
+  # This check is required by main protection, so every pull request must report it.
   pull_request:
     branches: [main]
-    paths:
-      - '.gitattributes'
-      - '.github/workflows/deploy.yml'
-      - '.gitignore'
-      - 'app.js'
-      - 'data.js'
-      - 'icon-*.png'
-      - 'icon.svg'
-      - 'index.html'
-      - 'manifest.json'
-      - 'og.png'
-      - 'package*.json'
-      - 'playback-core.js'
-      - 'playwright.config.mjs'
-      - 'salsa_course.js'
-      - 'scripts/playback-test-server.mjs'
-      - 'scripts/stage-pages.mjs'
-      - 'scripts/validate-pages-package.mjs'
-      - 'scripts/validate-playback.mjs'
-      - 'scripts/validate-site.mjs'
-      - 'style.css'
-      - 'summaries/**'
-      - 'sw.js'
-      - 'tests/**'
   workflow_dispatch:
 permissions:
   contents: read
@@ -60,6 +38,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   package:
+    name: Pages package check
     runs-on: ubuntu-latest
     steps:
       - name: Check out web sources

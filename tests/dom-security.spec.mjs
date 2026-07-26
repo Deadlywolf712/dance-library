@@ -50,7 +50,7 @@ test('catalog paths, titles, and imported notes stay inert while preserving exac
   await expect(page.locator('.recent-note-entry span').last()).toContainText(maliciousNote);
   await expectPayloadStayedText(page);
 
-  await page.locator('#home-search-btn').click({ force: true });
+  await page.locator('#mobile-search-btn').click();
   await page.locator('#spotlight-input').fill('Lesson');
   await expect(page.locator('.spotlight-result-title')).toHaveText(maliciousTitle);
   await expect(page.locator('.spotlight-result-path')).toHaveText(expectedFolderDisplay);

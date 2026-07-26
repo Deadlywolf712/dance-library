@@ -32,6 +32,7 @@ async function openMaliciousLibrary(page) {
 
   await page.goto('/');
   await expect(page.locator('body')).toHaveAttribute('data-view', 'home');
+  await expect(page.locator('body')).toHaveAttribute('data-app-ready', 'true');
   await expect(page.locator('.fav-tile .video-tile-title')).toHaveText(maliciousTitle);
 }
 

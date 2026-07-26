@@ -388,6 +388,7 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.sourceToggle.disabled = isHosted;
         elements.themeSelect.value = state.theme;
         updateNotesBadge();
+        document.body.dataset.appReady = 'true';
 
         // Hide loading spinner
         if (loader) { loader.style.opacity = '0'; setTimeout(() => loader.remove(), 300); }

@@ -139,8 +139,11 @@ object CatalogValidator {
             require(lesson.legacyPath.substringBeforeLast('/') == folder.pathSegments.joinToString("/")) {
                 "Lesson path diverges from folder: ${lesson.id}"
             }
-            require(lesson.title == lesson.legacyPath.substringAfterLast('/').replace(videoExtension, "")) {
-                "Lesson title diverges from filename: ${lesson.id}"
+            require(videoExtension.containsMatchIn(lesson.legacyPath.substringAfterLast('/'))) {
+                "Lesson path has an unsupported video extension: ${lesson.id}"
+            }
+            require(lesson.title.none { it == '\r' || it == '\n' }) {
+                "Lesson display title is invalid: ${lesson.id}"
             }
             require(lesson.chapters.zipWithNext().all { (a, b) -> a.seconds < b.seconds }) {
                 "Lesson chapters are not strictly ordered: ${lesson.id}"

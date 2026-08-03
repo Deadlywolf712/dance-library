@@ -9,6 +9,7 @@ export const OUTPUT = path.join(ROOT, '_site');
 export const PUBLIC_FILES = Object.freeze([
   'index.html',
   'app.js',
+  'course-taxonomy.js',
   'data.js',
   'style.css',
   'playback-core.js',

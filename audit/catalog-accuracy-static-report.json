@@ -1,0 +1,1524 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-08-03T04:15:29.234Z",
+  "claim": "Static catalog metadata is internally consistent and course taxonomy agrees with explicit lesson-summary evidence.",
+  "successCondition": "All 795 lessons have one unique Bunny ID, one matching summary, exact web/Android parity, coherent titles/course hierarchy, and no high-confidence style contradiction.",
+  "scope": {
+    "lessonCountAudited": 795,
+    "courseCountAudited": 34,
+    "summaryChunkCountAudited": 34,
+    "salsaCourseWeeksAudited": 6,
+    "salsaCourseFolderPresentationsAudited": 47,
+    "sources": [
+      "data.js",
+      "course-taxonomy.js",
+      "app.js",
+      "scripts/export-android-catalog.mjs",
+      "salsa_course.js",
+      "index.html",
+      "style.css",
+      "summaries/manifest.json",
+      "android/app/src/main/assets/catalog.json"
+    ],
+    "method": "Static cross-source parity, uniqueness, hierarchy, numbering, instructor-reference, and conservative style-lexicon analysis."
+  },
+  "conclusion": "No static catalog accuracy defect was confirmed.",
+  "counts": {
+    "webLessons": 795,
+    "sourceSummaries": 795,
+    "androidLessons": 795,
+    "confirmedIssues": 0,
+    "suspectedIssues": 0,
+    "highConfidenceMislabeledCourses": 0,
+    "highConfidenceAffectedLessons": 0,
+    "sourceConfirmedDisplayTitleOverrides": 6,
+    "duplicateBunnyIdGroups": 0,
+    "duplicateNormalizedSummaryGroups": 0,
+    "crossCourseCollectionReuseGroups": 0
+  },
+  "sourceParity": {
+    "webAndSummaryPathSetsMatch": true,
+    "webAndAndroidPathSetsMatch": true,
+    "duplicateBunnyMappings": [],
+    "duplicateAndroidBunnyMappings": [],
+    "duplicateSummaryContent": [],
+    "collectionCrossCourseReuse": [],
+    "pullZoneHosts": {
+      "web": "vz-6054c8d5-461.b-cdn.net",
+      "android": "vz-6054c8d5-461.b-cdn.net"
+    },
+    "androidSourceSha256": "1b3726b5f9874c3a2aa4648bcd84a7a295357a564f31a62e9aebb472f541f6bd",
+    "computedAndroidSourceSha256": "1b3726b5f9874c3a2aa4648bcd84a7a295357a564f31a62e9aebb472f541f6bd",
+    "androidCatalogMatchesCurrentInputs": true,
+    "summaryChunkSourceHashes": {
+      "adolfo-indacochea-tania-cannarsa-salsa-on2-advanced-bd1f8730": "daacbea55fe85248a3ebf00446f3008bb0af842e103ca5ee8a9153a303e83307",
+      "adolfo-indacochea-tania-cannarsa-salsa-on2-beginner-e5823a65": "4127bc760c411c2aa54dd318836eac3dfdcaf1feac7a9fc83aba1a7c5ec3f1fd",
+      "adolfo-indacochea-tania-cannarsa-salsa-on2-intermedi-8c7bfa0e": "0e9d74703c72eb6f77507bb1e3b4a69aaab2d61aaefd6768b5b1f407b0781675",
+      "alex-desiree-advanced-b2170d22": "79049bac4e2290be0ec7d77a76aef6f5f3aac6e8bdaec703e291c09f8fb351be",
+      "alex-desiree-beginner-23ee47d4": "deb2ced662114f05e52766df9cef96d7e0c0ada8be8e560f568afe1a295fb49e",
+      "alex-desiree-intermediate-d6a54cf6": "f7cbb883abe3fbaf81fba6df837488719734645b814be973e955ac8f01d26ca5",
+      "arthur-oksana-zouk-advanced-e86497db": "37b7b2caa7cc6a3f761e8cb6db9b0fd73c3fc6d3e51408fd28a778de8ea8c6b8",
+      "arthur-oksana-zouk-beginner-6d31ba95": "0c7faec28e35bdb125af95582e720123dba3b1c8b7469462a8e32bd181eb84e7",
+      "arthur-oksana-zouk-beginner-intermediate-ac53998f": "71b6e8c1b7977441b6514077a60d849685934a1063fcdb2cd45bb57adaa73647",
+      "arthur-oksana-zouk-intermediate-advanced-8168d6d7": "054df16ead03c774006ac82bc22e246d2e538ff6896d5c7b4308c0e591a33f75",
+      "arthur-oksana-zouk-intermediate-ef33fc7a": "1a28158b75246b507b89371b713b9748c9b2c4ce263756d79bab422bf623017c",
+      "carolina-rosa-advanced-720dd31a": "36029508b76b286fbc57052e3f9e972558a26b8756e8f33bc5dfe9a268674812",
+      "carolina-rosa-beginner-516aa4e0": "ba7364994856330dcd05ead885b6e08e103856b2e06f054b3f808d98e0d28649",
+      "carolina-rosa-intermediate-d2293794": "5db163598a4e5439895c148fd6132d9dd99b92d3189bc81c534d55948d2cf96c",
+      "fernando-sosa-tatiana-bonaguro-sosa-style-advanced-512c5d0a": "b1caff4175b4093e129c50d9b6918b9fe056031804182ffc49ead5580ea6e1fb",
+      "fernando-sosa-tatiana-bonaguro-sosa-style-beginner-34b0ae57": "8a9a033a82eb422d96ce88877f0d13320d5d4a83a45216f5889d800ab458c2a6",
+      "fernando-sosa-tatiana-bonaguro-sosa-style-intermedia-418d3835": "1cfa769c34258e90dab8d4294bd9ebc1b5cd57fbebd8b8d2caf3114f1ab637e5",
+      "fernando-sosa-tatiana-bonaguro-sosa-style-on-2-9984f86a": "55b10782efbfb212af7f8ef211c23d462a387a7a2b4fd8044fef77764bf571e8",
+      "fernando-sosa-tatiana-bonaguro-sosa-style-upgrade-37eae5d1": "f690059e3c371c3ba43a785bc899cb56d68085508ff4ef1ad4ce576146b1e271",
+      "isabelle-felicien-advanced-e908d1fb": "3c019ecb6d8a3eb7d406bf3fb5d88c6cb1c3f69db0ae9ee657627b76436a22b4",
+      "isabelle-felicien-beginner-1162e046": "0370465277176b642a4713a16076de002393f868c489a376b8f69b656bbe2ed3",
+      "isabelle-felicien-intermediate-c7f92023": "95288548b1574bee10b407ba2c1acf719b5b038d058163daf238fae9bde115d5",
+      "kike-nahir-kike-nahir-combinations-1e0bd6d2": "0540e05c98a6a4a6cff9cdd1b3568cb137441e8774f1aeacf2ec61dec6ef362f",
+      "kizomba-masterclass-268967c0": "be0af73852140abe1dc13cb7fdde116edb84a13b641821ba65aacf5b458686aa",
+      "korke-judith-advanced-6ca31e2a": "18fece96f5da9b753cf5c133136cfeb3df47f9d4240d4a6fec662a9d73412a73",
+      "korke-judith-bachata-sensual-2025-new-techniques-and-960255de": "4b2eff9be70f68b68e1e4356b2b5188f88f35f4d90e901819a9267bb220c5b60",
+      "korke-judith-beginnerintermediate-9f563e72": "b8ac14fdb85f9b1445f2267363db9d97cb2f1abc3847afb19c207047842e590c",
+      "korke-judith-fundamentals-of-bachata-sensual-f6c9d084": "bb0c738d6038ef25103d078056e05b249c94341019c10b83ca72bcb69d78f96e",
+      "korke-judith-intermediate-advanced-10200308": "eda040b45e3ccbec9adeb1fced73f74aa437aec7dc3cd585817838530d6e8268",
+      "marco-espejo-marco-espejo-style-21dc67d0": "92cd0797ad1d2da4aca35c81337af71c6c393714f7edad59ef83f7d05960d8fc",
+      "pablo-raquel-advanced-7654383c": "542574fb76f9e1efc5565ba1999828e8b8101b0fccb33f2b0a7b31c054df9bd8",
+      "pablo-raquel-intermediate-6765f7d1": "cdbb4713e6a9eb2a14d04f48dc14d07c7dc25ecc8d1799fa36ec6f516f75d1c2",
+      "pablo-raquel-intermediateadvanced-fb93acfd": "65274bee1a56a8519559bc56d79d46898c1c1253a930715b200d8fc39cf7a24d",
+      "salsa-masterclass-53016ced": "2b5d23d8a1e6faa6c65292a69aaf5b8f071da789228c3f4902f660ff825c372c"
+    }
+  },
+  "activeWebTaxonomy": {
+    "categoryOrder": [
+      "Salsa",
+      "Bachata",
+      "Zouk",
+      "Kizomba",
+      "Salsa Masterclass",
+      "Kizomba Masterclass",
+      "Other"
+    ],
+    "courseCategoryByFolder": {
+      "Adolfo Indacochea  Tania Cannarsa - Salsa On2 Advanced": "Salsa",
+      "Adolfo Indacochea  Tania Cannarsa - Salsa On2 Beginner": "Salsa",
+      "Adolfo Indacochea  Tania Cannarsa - Salsa On2 Intermediate": "Salsa",
+      "Alex  Desirée - Advanced": "Bachata",
+      "Alex  Desirée - Beginner": "Bachata",
+      "Alex  Desirée - Intermediate": "Bachata",
+      "Arthur  Oksana - Zouk Advanced": "Zouk",
+      "Arthur  Oksana - Zouk Beginner": "Zouk",
+      "Arthur  Oksana - Zouk Beginner-Intermediate": "Zouk",
+      "Arthur  Oksana - Zouk Intermediate": "Zouk",
+      "Arthur  Oksana - Zouk Intermediate-Advanced": "Zouk",
+      "Carolina Rosa - Advanced": "Bachata",
+      "Carolina Rosa - Beginner": "Bachata",
+      "Carolina Rosa - Intermediate": "Bachata",
+      "Fernando Sosa  Tatiana Bonaguro - Sosa Style Advanced": "Salsa",
+      "Fernando Sosa  Tatiana Bonaguro - Sosa Style Beginner": "Salsa",
+      "Fernando Sosa  Tatiana Bonaguro - Sosa Style Intermediate": "Salsa",
+      "Fernando Sosa  Tatiana Bonaguro - Sosa Style On 2": "Salsa",
+      "Fernando Sosa  Tatiana Bonaguro - Sosa Style Upgrade": "Salsa",
+      "Isabelle  Felicien - Advanced": "Kizomba",
+      "Isabelle  Felicien - Beginner": "Kizomba",
+      "Isabelle  Felicien - Intermediate": "Kizomba",
+      "Kike  Nahir - Kike  Nahir Combinations": "Bachata",
+      "Kizomba Masterclass": "Kizomba Masterclass",
+      "Korke  Judith - Advanced": "Bachata",
+      "Korke  Judith - Bachata Sensual 2025 New Techniques and Cadences": "Bachata",
+      "Korke  Judith - BeginnerIntermediate": "Bachata",
+      "Korke  Judith - Fundamentals of Bachata Sensual": "Bachata",
+      "Korke  Judith - Intermediate  Advanced": "Bachata",
+      "Marco Espejo - Marco Espejo Style": "Bachata",
+      "Pablo  Raquel - Advanced": "Bachata",
+      "Pablo  Raquel - Intermediate": "Bachata",
+      "Pablo  Raquel - IntermediateAdvanced": "Bachata",
+      "Salsa Masterclass": "Salsa Masterclass"
+    }
+  },
+  "sourceConfirmedDisplayTitleOverrides": [
+    {
+      "legacyPath": "Carolina Rosa - Advanced/09 - 33 Steps.mp4",
+      "displayTitle": "09 - 3X3 Steps",
+      "androidTitle": "09 - 3X3 Steps"
+    },
+    {
+      "legacyPath": "Carolina Rosa - Beginner/02 - Punta Talón Point  Heel.mp4",
+      "displayTitle": "02 - Punta Talón (Point & Heel)",
+      "androidTitle": "02 - Punta Talón (Point & Heel)"
+    },
+    {
+      "legacyPath": "Carolina Rosa - Beginner/05 - Engaño Trick.mp4",
+      "displayTitle": "05 - Engaño (Trick)",
+      "androidTitle": "05 - Engaño (Trick)"
+    },
+    {
+      "legacyPath": "Carolina Rosa - Beginner/07 - Turns in 15.mp4",
+      "displayTitle": "07 - Turns in 1/5",
+      "androidTitle": "07 - Turns in 1/5"
+    },
+    {
+      "legacyPath": "Carolina Rosa - Beginner/08 - Diagonals in 1  Chachas in 3 4.mp4",
+      "displayTitle": "08 - Diagonals in 1 & Chachas in 3, 4",
+      "androidTitle": "08 - Diagonals in 1 & Chachas in 3, 4"
+    },
+    {
+      "legacyPath": "Carolina Rosa - Intermediate/05 - Twist and Tikitiki.mp4",
+      "displayTitle": "05 - Twist & Tikitiki",
+      "androidTitle": "05 - Twist & Tikitiki"
+    }
+  ],
+  "courseTaxonomyAudit": [
+    {
+      "courseId": "adolfo-indacochea-tania-cannarsa-salsa-on2-advanced-bd1f8730",
+      "courseTitle": "Adolfo Indacochea  Tania Cannarsa - Salsa On2 Advanced",
+      "assignedCategoryId": "salsa",
+      "assignedStyle": "salsa",
+      "inferredStyle": null,
+      "confidence": "not-established",
+      "lessonCount": 20,
+      "aggregateEvidence": {
+        "salsa": {
+          "score": 124,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 15,
+          "matchedTerms": [
+            "cross body lead",
+            "suzy q",
+            "copa",
+            "pachanga"
+          ]
+        },
+        "bachata": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "zouk": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "kizomba": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        }
+      },
+      "contradictoryLessonPaths": []
+    },
+    {
+      "courseId": "adolfo-indacochea-tania-cannarsa-salsa-on2-beginner-e5823a65",
+      "courseTitle": "Adolfo Indacochea  Tania Cannarsa - Salsa On2 Beginner",
+      "assignedCategoryId": "salsa",
+      "assignedStyle": "salsa",
+      "inferredStyle": null,
+      "confidence": "not-established",
+      "lessonCount": 20,
+      "aggregateEvidence": {
+        "salsa": {
+          "score": 88,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 9,
+          "matchedTerms": [
+            "cross body lead",
+            "suzy q"
+          ]
+        },
+        "bachata": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "zouk": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "kizomba": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        }
+      },
+      "contradictoryLessonPaths": []
+    },
+    {
+      "courseId": "adolfo-indacochea-tania-cannarsa-salsa-on2-intermedi-8c7bfa0e",
+      "courseTitle": "Adolfo Indacochea  Tania Cannarsa - Salsa On2 Intermediate",
+      "assignedCategoryId": "salsa",
+      "assignedStyle": "salsa",
+      "inferredStyle": null,
+      "confidence": "not-established",
+      "lessonCount": 20,
+      "aggregateEvidence": {
+        "salsa": {
+          "score": 72,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 8,
+          "matchedTerms": [
+            "cross body lead",
+            "copa",
+            "suzy q"
+          ]
+        },
+        "bachata": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "zouk": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "kizomba": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        }
+      },
+      "contradictoryLessonPaths": []
+    },
+    {
+      "courseId": "fernando-sosa-tatiana-bonaguro-sosa-style-advanced-512c5d0a",
+      "courseTitle": "Fernando Sosa  Tatiana Bonaguro - Sosa Style Advanced",
+      "assignedCategoryId": "salsa",
+      "assignedStyle": "salsa",
+      "inferredStyle": null,
+      "confidence": "not-established",
+      "lessonCount": 20,
+      "aggregateEvidence": {
+        "salsa": {
+          "score": 60,
+          "explicitMentions": 2,
+          "lessonsWithEvidence": 7,
+          "matchedTerms": [
+            "salsa",
+            "suzy q",
+            "cross body lead"
+          ]
+        },
+        "bachata": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "zouk": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "kizomba": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        }
+      },
+      "contradictoryLessonPaths": []
+    },
+    {
+      "courseId": "fernando-sosa-tatiana-bonaguro-sosa-style-beginner-34b0ae57",
+      "courseTitle": "Fernando Sosa  Tatiana Bonaguro - Sosa Style Beginner",
+      "assignedCategoryId": "salsa",
+      "assignedStyle": "salsa",
+      "inferredStyle": null,
+      "confidence": "not-established",
+      "lessonCount": 20,
+      "aggregateEvidence": {
+        "salsa": {
+          "score": 136,
+          "explicitMentions": 5,
+          "lessonsWithEvidence": 10,
+          "matchedTerms": [
+            "salsa",
+            "cross body lead",
+            "suzy q"
+          ]
+        },
+        "bachata": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "zouk": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "kizomba": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        }
+      },
+      "contradictoryLessonPaths": []
+    },
+    {
+      "courseId": "fernando-sosa-tatiana-bonaguro-sosa-style-intermedia-418d3835",
+      "courseTitle": "Fernando Sosa  Tatiana Bonaguro - Sosa Style Intermediate",
+      "assignedCategoryId": "salsa",
+      "assignedStyle": "salsa",
+      "inferredStyle": null,
+      "confidence": "not-established",
+      "lessonCount": 20,
+      "aggregateEvidence": {
+        "salsa": {
+          "score": 100,
+          "explicitMentions": 7,
+          "lessonsWithEvidence": 9,
+          "matchedTerms": [
+            "salsa",
+            "cross body lead",
+            "suzy q"
+          ]
+        },
+        "bachata": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "zouk": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "kizomba": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        }
+      },
+      "contradictoryLessonPaths": []
+    },
+    {
+      "courseId": "fernando-sosa-tatiana-bonaguro-sosa-style-on-2-9984f86a",
+      "courseTitle": "Fernando Sosa  Tatiana Bonaguro - Sosa Style On 2",
+      "assignedCategoryId": "salsa",
+      "assignedStyle": "salsa",
+      "inferredStyle": null,
+      "confidence": "not-established",
+      "lessonCount": 30,
+      "aggregateEvidence": {
+        "salsa": {
+          "score": 216,
+          "explicitMentions": 12,
+          "lessonsWithEvidence": 19,
+          "matchedTerms": [
+            "salsa",
+            "cross body lead",
+            "suzy q",
+            "copa"
+          ]
+        },
+        "bachata": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "zouk": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "kizomba": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        }
+      },
+      "contradictoryLessonPaths": []
+    },
+    {
+      "courseId": "fernando-sosa-tatiana-bonaguro-sosa-style-upgrade-37eae5d1",
+      "courseTitle": "Fernando Sosa  Tatiana Bonaguro - Sosa Style Upgrade",
+      "assignedCategoryId": "salsa",
+      "assignedStyle": "salsa",
+      "inferredStyle": null,
+      "confidence": "not-established",
+      "lessonCount": 15,
+      "aggregateEvidence": {
+        "salsa": {
+          "score": 84,
+          "explicitMentions": 4,
+          "lessonsWithEvidence": 7,
+          "matchedTerms": [
+            "salsa",
+            "suzy q",
+            "cross body lead",
+            "copa"
+          ]
+        },
+        "bachata": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "zouk": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "kizomba": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        }
+      },
+      "contradictoryLessonPaths": []
+    },
+    {
+      "courseId": "alex-desiree-advanced-b2170d22",
+      "courseTitle": "Alex  Desirée - Advanced",
+      "assignedCategoryId": "bachata",
+      "assignedStyle": "bachata",
+      "inferredStyle": null,
+      "confidence": "not-established",
+      "lessonCount": 20,
+      "aggregateEvidence": {
+        "salsa": {
+          "score": 16,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 1,
+          "matchedTerms": [
+            "cross body lead"
+          ]
+        },
+        "bachata": {
+          "score": 90,
+          "explicitMentions": 7,
+          "lessonsWithEvidence": 5,
+          "matchedTerms": [
+            "bachata",
+            "dominican bachata"
+          ]
+        },
+        "zouk": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "kizomba": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        }
+      },
+      "contradictoryLessonPaths": []
+    },
+    {
+      "courseId": "alex-desiree-beginner-23ee47d4",
+      "courseTitle": "Alex  Desirée - Beginner",
+      "assignedCategoryId": "bachata",
+      "assignedStyle": "bachata",
+      "inferredStyle": null,
+      "confidence": "not-established",
+      "lessonCount": 20,
+      "aggregateEvidence": {
+        "salsa": {
+          "score": 12,
+          "explicitMentions": 1,
+          "lessonsWithEvidence": 1,
+          "matchedTerms": [
+            "salsa"
+          ]
+        },
+        "bachata": {
+          "score": 276,
+          "explicitMentions": 22,
+          "lessonsWithEvidence": 12,
+          "matchedTerms": [
+            "bachata",
+            "traditional bachata",
+            "dominican bachata"
+          ]
+        },
+        "zouk": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "kizomba": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        }
+      },
+      "contradictoryLessonPaths": []
+    },
+    {
+      "courseId": "alex-desiree-intermediate-d6a54cf6",
+      "courseTitle": "Alex  Desirée - Intermediate",
+      "assignedCategoryId": "bachata",
+      "assignedStyle": "bachata",
+      "inferredStyle": null,
+      "confidence": "not-established",
+      "lessonCount": 20,
+      "aggregateEvidence": {
+        "salsa": {
+          "score": 24,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 2,
+          "matchedTerms": [
+            "cross body lead"
+          ]
+        },
+        "bachata": {
+          "score": 114,
+          "explicitMentions": 9,
+          "lessonsWithEvidence": 6,
+          "matchedTerms": [
+            "bachata",
+            "traditional bachata"
+          ]
+        },
+        "zouk": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "kizomba": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        }
+      },
+      "contradictoryLessonPaths": []
+    },
+    {
+      "courseId": "carolina-rosa-advanced-720dd31a",
+      "courseTitle": "Carolina Rosa - Advanced",
+      "assignedCategoryId": "bachata",
+      "assignedStyle": "bachata",
+      "inferredStyle": null,
+      "confidence": "not-established",
+      "lessonCount": 10,
+      "aggregateEvidence": {
+        "salsa": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "bachata": {
+          "score": 48,
+          "explicitMentions": 3,
+          "lessonsWithEvidence": 3,
+          "matchedTerms": [
+            "bachata",
+            "traditional bachata"
+          ]
+        },
+        "zouk": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "kizomba": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        }
+      },
+      "contradictoryLessonPaths": []
+    },
+    {
+      "courseId": "carolina-rosa-beginner-516aa4e0",
+      "courseTitle": "Carolina Rosa - Beginner",
+      "assignedCategoryId": "bachata",
+      "assignedStyle": "bachata",
+      "inferredStyle": null,
+      "confidence": "not-established",
+      "lessonCount": 10,
+      "aggregateEvidence": {
+        "salsa": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "bachata": {
+          "score": 114,
+          "explicitMentions": 6,
+          "lessonsWithEvidence": 5,
+          "matchedTerms": [
+            "bachata",
+            "traditional bachata",
+            "punta talon"
+          ]
+        },
+        "zouk": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "kizomba": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        }
+      },
+      "contradictoryLessonPaths": []
+    },
+    {
+      "courseId": "carolina-rosa-intermediate-d2293794",
+      "courseTitle": "Carolina Rosa - Intermediate",
+      "assignedCategoryId": "bachata",
+      "assignedStyle": "bachata",
+      "inferredStyle": null,
+      "confidence": "not-established",
+      "lessonCount": 10,
+      "aggregateEvidence": {
+        "salsa": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "bachata": {
+          "score": 45,
+          "explicitMentions": 3,
+          "lessonsWithEvidence": 4,
+          "matchedTerms": [
+            "bachata",
+            "traditional bachata",
+            "punta talon"
+          ]
+        },
+        "zouk": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "kizomba": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        }
+      },
+      "contradictoryLessonPaths": []
+    },
+    {
+      "courseId": "kike-nahir-kike-nahir-combinations-1e0bd6d2",
+      "courseTitle": "Kike  Nahir - Kike  Nahir Combinations",
+      "assignedCategoryId": "bachata",
+      "assignedStyle": "bachata",
+      "inferredStyle": null,
+      "confidence": "not-established",
+      "lessonCount": 17,
+      "aggregateEvidence": {
+        "salsa": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "bachata": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "zouk": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "kizomba": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        }
+      },
+      "contradictoryLessonPaths": []
+    },
+    {
+      "courseId": "korke-judith-advanced-6ca31e2a",
+      "courseTitle": "Korke  Judith - Advanced",
+      "assignedCategoryId": "bachata",
+      "assignedStyle": "bachata",
+      "inferredStyle": null,
+      "confidence": "not-established",
+      "lessonCount": 15,
+      "aggregateEvidence": {
+        "salsa": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "bachata": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "zouk": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "kizomba": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        }
+      },
+      "contradictoryLessonPaths": []
+    },
+    {
+      "courseId": "korke-judith-bachata-sensual-2025-new-techniques-and-960255de",
+      "courseTitle": "Korke  Judith - Bachata Sensual 2025 New Techniques and Cadences",
+      "assignedCategoryId": "bachata",
+      "assignedStyle": "bachata",
+      "inferredStyle": null,
+      "confidence": "not-established",
+      "lessonCount": 16,
+      "aggregateEvidence": {
+        "salsa": {
+          "score": 12,
+          "explicitMentions": 1,
+          "lessonsWithEvidence": 1,
+          "matchedTerms": [
+            "salsa"
+          ]
+        },
+        "bachata": {
+          "score": 36,
+          "explicitMentions": 2,
+          "lessonsWithEvidence": 2,
+          "matchedTerms": [
+            "bachata",
+            "bachata sensual"
+          ]
+        },
+        "zouk": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "kizomba": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        }
+      },
+      "contradictoryLessonPaths": []
+    },
+    {
+      "courseId": "korke-judith-beginnerintermediate-9f563e72",
+      "courseTitle": "Korke  Judith - BeginnerIntermediate",
+      "assignedCategoryId": "bachata",
+      "assignedStyle": "bachata",
+      "inferredStyle": null,
+      "confidence": "not-established",
+      "lessonCount": 36,
+      "aggregateEvidence": {
+        "salsa": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "bachata": {
+          "score": 48,
+          "explicitMentions": 4,
+          "lessonsWithEvidence": 4,
+          "matchedTerms": [
+            "bachata"
+          ]
+        },
+        "zouk": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "kizomba": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        }
+      },
+      "contradictoryLessonPaths": []
+    },
+    {
+      "courseId": "korke-judith-fundamentals-of-bachata-sensual-f6c9d084",
+      "courseTitle": "Korke  Judith - Fundamentals of Bachata Sensual",
+      "assignedCategoryId": "bachata",
+      "assignedStyle": "bachata",
+      "inferredStyle": null,
+      "confidence": "not-established",
+      "lessonCount": 15,
+      "aggregateEvidence": {
+        "salsa": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "bachata": {
+          "score": 126,
+          "explicitMentions": 10,
+          "lessonsWithEvidence": 7,
+          "matchedTerms": [
+            "bachata",
+            "bachata sensual"
+          ]
+        },
+        "zouk": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "kizomba": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        }
+      },
+      "contradictoryLessonPaths": []
+    },
+    {
+      "courseId": "korke-judith-intermediate-advanced-10200308",
+      "courseTitle": "Korke  Judith - Intermediate  Advanced",
+      "assignedCategoryId": "bachata",
+      "assignedStyle": "bachata",
+      "inferredStyle": null,
+      "confidence": "not-established",
+      "lessonCount": 36,
+      "aggregateEvidence": {
+        "salsa": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "bachata": {
+          "score": 24,
+          "explicitMentions": 2,
+          "lessonsWithEvidence": 2,
+          "matchedTerms": [
+            "bachata"
+          ]
+        },
+        "zouk": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "kizomba": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        }
+      },
+      "contradictoryLessonPaths": []
+    },
+    {
+      "courseId": "marco-espejo-marco-espejo-style-21dc67d0",
+      "courseTitle": "Marco Espejo - Marco Espejo Style",
+      "assignedCategoryId": "bachata",
+      "assignedStyle": "bachata",
+      "inferredStyle": null,
+      "confidence": "not-established",
+      "lessonCount": 25,
+      "aggregateEvidence": {
+        "salsa": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "bachata": {
+          "score": 156,
+          "explicitMentions": 13,
+          "lessonsWithEvidence": 11,
+          "matchedTerms": [
+            "bachata"
+          ]
+        },
+        "zouk": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "kizomba": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        }
+      },
+      "contradictoryLessonPaths": []
+    },
+    {
+      "courseId": "pablo-raquel-advanced-7654383c",
+      "courseTitle": "Pablo  Raquel - Advanced",
+      "assignedCategoryId": "bachata",
+      "assignedStyle": "bachata",
+      "inferredStyle": null,
+      "confidence": "not-established",
+      "lessonCount": 18,
+      "aggregateEvidence": {
+        "salsa": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "bachata": {
+          "score": 12,
+          "explicitMentions": 1,
+          "lessonsWithEvidence": 1,
+          "matchedTerms": [
+            "bachata"
+          ]
+        },
+        "zouk": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "kizomba": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        }
+      },
+      "contradictoryLessonPaths": []
+    },
+    {
+      "courseId": "pablo-raquel-intermediate-6765f7d1",
+      "courseTitle": "Pablo  Raquel - Intermediate",
+      "assignedCategoryId": "bachata",
+      "assignedStyle": "bachata",
+      "inferredStyle": null,
+      "confidence": "not-established",
+      "lessonCount": 15,
+      "aggregateEvidence": {
+        "salsa": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "bachata": {
+          "score": 60,
+          "explicitMentions": 5,
+          "lessonsWithEvidence": 4,
+          "matchedTerms": [
+            "bachata"
+          ]
+        },
+        "zouk": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "kizomba": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        }
+      },
+      "contradictoryLessonPaths": []
+    },
+    {
+      "courseId": "pablo-raquel-intermediateadvanced-fb93acfd",
+      "courseTitle": "Pablo  Raquel - IntermediateAdvanced",
+      "assignedCategoryId": "bachata",
+      "assignedStyle": "bachata",
+      "inferredStyle": null,
+      "confidence": "not-established",
+      "lessonCount": 36,
+      "aggregateEvidence": {
+        "salsa": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "bachata": {
+          "score": 36,
+          "explicitMentions": 3,
+          "lessonsWithEvidence": 3,
+          "matchedTerms": [
+            "bachata"
+          ]
+        },
+        "zouk": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "kizomba": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        }
+      },
+      "contradictoryLessonPaths": []
+    },
+    {
+      "courseId": "arthur-oksana-zouk-advanced-e86497db",
+      "courseTitle": "Arthur  Oksana - Zouk Advanced",
+      "assignedCategoryId": "zouk",
+      "assignedStyle": "zouk",
+      "inferredStyle": null,
+      "confidence": "not-established",
+      "lessonCount": 12,
+      "aggregateEvidence": {
+        "salsa": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "bachata": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "zouk": {
+          "score": 88,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 7,
+          "matchedTerms": [
+            "viradinha",
+            "balao",
+            "despresada",
+            "toalla"
+          ]
+        },
+        "kizomba": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        }
+      },
+      "contradictoryLessonPaths": []
+    },
+    {
+      "courseId": "arthur-oksana-zouk-beginner-6d31ba95",
+      "courseTitle": "Arthur  Oksana - Zouk Beginner",
+      "assignedCategoryId": "zouk",
+      "assignedStyle": "zouk",
+      "inferredStyle": null,
+      "confidence": "not-established",
+      "lessonCount": 14,
+      "aggregateEvidence": {
+        "salsa": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "bachata": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "zouk": {
+          "score": 136,
+          "explicitMentions": 8,
+          "lessonsWithEvidence": 6,
+          "matchedTerms": [
+            "zouk",
+            "viradinha"
+          ]
+        },
+        "kizomba": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        }
+      },
+      "contradictoryLessonPaths": []
+    },
+    {
+      "courseId": "arthur-oksana-zouk-beginner-intermediate-ac53998f",
+      "courseTitle": "Arthur  Oksana - Zouk Beginner-Intermediate",
+      "assignedCategoryId": "zouk",
+      "assignedStyle": "zouk",
+      "inferredStyle": null,
+      "confidence": "not-established",
+      "lessonCount": 12,
+      "aggregateEvidence": {
+        "salsa": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "bachata": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "zouk": {
+          "score": 138,
+          "explicitMentions": 4,
+          "lessonsWithEvidence": 6,
+          "matchedTerms": [
+            "viradinha",
+            "zouk"
+          ]
+        },
+        "kizomba": {
+          "score": 24,
+          "explicitMentions": 2,
+          "lessonsWithEvidence": 1,
+          "matchedTerms": [
+            "kizomba"
+          ]
+        }
+      },
+      "contradictoryLessonPaths": []
+    },
+    {
+      "courseId": "arthur-oksana-zouk-intermediate-ef33fc7a",
+      "courseTitle": "Arthur  Oksana - Zouk Intermediate",
+      "assignedCategoryId": "zouk",
+      "assignedStyle": "zouk",
+      "inferredStyle": null,
+      "confidence": "not-established",
+      "lessonCount": 11,
+      "aggregateEvidence": {
+        "salsa": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "bachata": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "zouk": {
+          "score": 67,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 5,
+          "matchedTerms": [
+            "viradinha",
+            "balao"
+          ]
+        },
+        "kizomba": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        }
+      },
+      "contradictoryLessonPaths": []
+    },
+    {
+      "courseId": "arthur-oksana-zouk-intermediate-advanced-8168d6d7",
+      "courseTitle": "Arthur  Oksana - Zouk Intermediate-Advanced",
+      "assignedCategoryId": "zouk",
+      "assignedStyle": "zouk",
+      "inferredStyle": null,
+      "confidence": "not-established",
+      "lessonCount": 11,
+      "aggregateEvidence": {
+        "salsa": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "bachata": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "zouk": {
+          "score": 47,
+          "explicitMentions": 1,
+          "lessonsWithEvidence": 4,
+          "matchedTerms": [
+            "zouk",
+            "viradinha"
+          ]
+        },
+        "kizomba": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        }
+      },
+      "contradictoryLessonPaths": []
+    },
+    {
+      "courseId": "isabelle-felicien-advanced-e908d1fb",
+      "courseTitle": "Isabelle  Felicien - Advanced",
+      "assignedCategoryId": "kizomba",
+      "assignedStyle": "kizomba",
+      "inferredStyle": null,
+      "confidence": "not-established",
+      "lessonCount": 19,
+      "aggregateEvidence": {
+        "salsa": {
+          "score": 4,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 1,
+          "matchedTerms": [
+            "pachanga"
+          ]
+        },
+        "bachata": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "zouk": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "kizomba": {
+          "score": 100,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 13,
+          "matchedTerms": [
+            "saida"
+          ]
+        }
+      },
+      "contradictoryLessonPaths": []
+    },
+    {
+      "courseId": "isabelle-felicien-beginner-1162e046",
+      "courseTitle": "Isabelle  Felicien - Beginner",
+      "assignedCategoryId": "kizomba",
+      "assignedStyle": "kizomba",
+      "inferredStyle": null,
+      "confidence": "not-established",
+      "lessonCount": 20,
+      "aggregateEvidence": {
+        "salsa": {
+          "score": 24,
+          "explicitMentions": 2,
+          "lessonsWithEvidence": 2,
+          "matchedTerms": [
+            "salsa"
+          ]
+        },
+        "bachata": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "zouk": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "kizomba": {
+          "score": 412,
+          "explicitMentions": 7,
+          "lessonsWithEvidence": 20,
+          "matchedTerms": [
+            "kizomba",
+            "saida"
+          ]
+        }
+      },
+      "contradictoryLessonPaths": []
+    },
+    {
+      "courseId": "isabelle-felicien-intermediate-c7f92023",
+      "courseTitle": "Isabelle  Felicien - Intermediate",
+      "assignedCategoryId": "kizomba",
+      "assignedStyle": "kizomba",
+      "inferredStyle": null,
+      "confidence": "not-established",
+      "lessonCount": 20,
+      "aggregateEvidence": {
+        "salsa": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "bachata": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "zouk": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "kizomba": {
+          "score": 152,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 15,
+          "matchedTerms": [
+            "saida"
+          ]
+        }
+      },
+      "contradictoryLessonPaths": []
+    },
+    {
+      "courseId": "salsa-masterclass-53016ced",
+      "courseTitle": "Salsa Masterclass",
+      "assignedCategoryId": "salsa-masterclass",
+      "assignedStyle": "salsa",
+      "inferredStyle": null,
+      "confidence": "not-established",
+      "lessonCount": 127,
+      "aggregateEvidence": {
+        "salsa": {
+          "score": 366,
+          "explicitMentions": 7,
+          "lessonsWithEvidence": 43,
+          "matchedTerms": [
+            "salsa",
+            "salsa on2",
+            "cross body lead",
+            "salsa on1",
+            "copa"
+          ]
+        },
+        "bachata": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "zouk": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "kizomba": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        }
+      },
+      "contradictoryLessonPaths": []
+    },
+    {
+      "courseId": "kizomba-masterclass-268967c0",
+      "courseTitle": "Kizomba Masterclass",
+      "assignedCategoryId": "kizomba-masterclass",
+      "assignedStyle": "kizomba",
+      "inferredStyle": null,
+      "confidence": "not-established",
+      "lessonCount": 65,
+      "aggregateEvidence": {
+        "salsa": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "bachata": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "zouk": {
+          "score": 0,
+          "explicitMentions": 0,
+          "lessonsWithEvidence": 0,
+          "matchedTerms": []
+        },
+        "kizomba": {
+          "score": 999,
+          "explicitMentions": 51,
+          "lessonsWithEvidence": 47,
+          "matchedTerms": [
+            "kizomba",
+            "saida",
+            "virgula",
+            "ginga"
+          ]
+        }
+      },
+      "contradictoryLessonPaths": []
+    }
+  ],
+  "confirmedIssues": [],
+  "suspectedIssues": [],
+  "limitations": [
+    "Static metadata can prove duplicate/mismatched IDs and taxonomy contradictions, but it cannot prove that a Bunny ID serves the intended visual lesson.",
+    "A media-content audit (duration plus sampled frames/audio/transcript) is required to validate every Bunny asset against its title and instructor.",
+    "A style word used for comparison inside one lesson is not treated as a category mismatch; course-level repeated explicit evidence is required."
+  ]
+}

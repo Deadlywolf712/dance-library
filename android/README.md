@@ -12,7 +12,7 @@ The app compiles against API 37, targets API 36, supports API 24+, and produces 
 
 ## Build
 
-From the repository root, regenerate the checked-in catalog whenever `data.js`, `summaries/`, `salsa_course.js`, `app.js`, `index.html`, or `style.css` changes:
+From the repository root, regenerate the checked-in catalog whenever `data.js`, `summaries/`, `course-taxonomy.js`, `salsa_course.js`, `index.html`, or `style.css` changes:
 
 ```sh
 npm run export:android-catalog
@@ -35,7 +35,7 @@ adb install -r -t app/build/outputs/apk/debug/app-debug.apk
 
 ## Catalog and playback
 
-`scripts/export-android-catalog.mjs` parses the repository-controlled catalog, summary chunks, website taxonomy, theme definitions, and Salsa Masterclass presentation data as strict UTF-8. The Salsa course data is evaluated only inside a locked-down Node `vm` context with a bounded timeout; it has no browser, network, module, or filesystem globals. The generated `app/src/main/assets/catalog.json` is deterministic and validated for counts, references, folder cycles and rollups, website ordering, theme fields, UUIDs, duplicate paths, chapter order, canonical Bunny URLs, and encoding damage.
+`scripts/export-android-catalog.mjs` parses the repository-controlled catalog, summary chunks, authoritative course taxonomy, theme definitions, and Salsa Masterclass presentation data as strict UTF-8. The taxonomy and Salsa course data are evaluated only inside locked-down Node `vm` contexts with bounded timeouts; they have no browser, network, module, or filesystem globals. The generated `app/src/main/assets/catalog.json` is deterministic and validated for exact taxonomy coverage, counts, references, folder cycles and rollups, website ordering, theme fields, UUIDs, duplicate paths, chapter order, canonical Bunny URLs, and encoding damage.
 
 Each lesson streams from:
 

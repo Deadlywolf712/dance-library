@@ -8,10 +8,10 @@ import vm from 'node:vm';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const catalogPath = path.join(root, 'data.js');
 const manifestPath = path.join(root, 'summaries', 'manifest.json');
+const courseTaxonomyPath = path.join(root, 'course-taxonomy.js');
 const salsaCoursePath = path.join(root, 'salsa_course.js');
 const themeMarkupPath = path.join(root, 'index.html');
 const themeStylesPath = path.join(root, 'style.css');
-const appSourcePath = path.join(root, 'app.js');
 const outputPath = path.join(root, 'android', 'app', 'src', 'main', 'assets', 'catalog.json');
 
 const EXPECTED_LESSONS = 795;
@@ -51,16 +51,6 @@ const CATEGORY_ORDER = [
   { id: 'other', title: 'Other' }
 ];
 
-// Keep this evaluation order aligned with parseDataToTree() in app.js.
-const CATEGORY_RULES = [
-  ['salsa-masterclass', ['salsa masterclass']],
-  ['kizomba-masterclass', ['kizomba masterclass']],
-  ['salsa', ['adolfo', 'fernando', 'carolina', 'marco']],
-  ['bachata', ['alex', 'desiree', 'korke', 'pablo', 'kike']],
-  ['zouk', ['arthur', 'oksana']],
-  ['kizomba', ['isabelle']]
-];
-
 function fail(message) {
   throw new Error(message);
 }
@@ -69,44 +59,84 @@ function assert(condition, message) {
   if (!condition) fail(message);
 }
 
-function normalizeTaxonomyKeyword(value) {
-  return String(value).normalize('NFD').replace(/\p{M}+/gu, '').toLowerCase();
-}
+function parseCourseTaxonomy(source) {
+  assert(source.includes('const COURSE_TAXONOMY ='), 'course-taxonomy.js does not define COURSE_TAXONOMY.');
 
-function validateWebTaxonomy(source) {
-  const styleMatch = source.match(/const\s+styleMap\s*=\s*(\{[\s\S]*?\n\s*\});/);
-  assert(styleMatch, 'Could not read styleMap from app.js.');
-  const orderMatch = source.match(/const\s+order\s*=\s*(\[[^\]]+\]);/);
-  assert(orderMatch, 'Could not read root folder order from app.js.');
-
-  let styleMap;
-  let rootOrder;
+  let serialized;
   try {
-    styleMap = JSON.parse(styleMatch[1]);
-    rootOrder = JSON.parse(orderMatch[1]);
+    serialized = vm.runInNewContext(
+      `${source}\n;JSON.stringify(COURSE_TAXONOMY);`,
+      Object.create(null),
+      {
+        filename: path.relative(root, courseTaxonomyPath),
+        timeout: 1_000,
+        contextCodeGeneration: { strings: false, wasm: false }
+      }
+    );
   } catch (error) {
-    fail(`Could not parse app.js taxonomy: ${error.message}`);
+    fail(`course-taxonomy.js could not be evaluated as static taxonomy data: ${error.message}`);
   }
 
-  const expectedStyleTitles = CATEGORY_RULES.map(([id]) =>
-    CATEGORY_ORDER.find(category => category.id === id)?.title
-  );
+  let taxonomy;
+  try {
+    taxonomy = JSON.parse(serialized);
+  } catch (error) {
+    fail(`course-taxonomy.js did not serialize to JSON: ${error.message}`);
+  }
+
+  assert(taxonomy && typeof taxonomy === 'object' && !Array.isArray(taxonomy), 'COURSE_TAXONOMY must be an object.');
+  assert(Array.isArray(taxonomy.categoryOrder), 'COURSE_TAXONOMY.categoryOrder must be an array.');
   assert(
-    JSON.stringify(Object.keys(styleMap)) === JSON.stringify(expectedStyleTitles),
-    'Android CATEGORY_RULES order no longer matches app.js styleMap.'
+    taxonomy.courseCategoryByFolder &&
+      typeof taxonomy.courseCategoryByFolder === 'object' &&
+      !Array.isArray(taxonomy.courseCategoryByFolder),
+    'COURSE_TAXONOMY.courseCategoryByFolder must be an object.'
   );
-  CATEGORY_RULES.forEach(([id, keywords]) => {
-    const title = CATEGORY_ORDER.find(category => category.id === id)?.title;
-    const webKeywords = (styleMap[title] || []).map(normalizeTaxonomyKeyword);
+
+  const expectedCategoryTitles = CATEGORY_ORDER.map(category => category.title);
+  assert(
+    JSON.stringify(taxonomy.categoryOrder) === JSON.stringify(expectedCategoryTitles),
+    `COURSE_TAXONOMY.categoryOrder must be exactly ${expectedCategoryTitles.join(', ')}.`
+  );
+
+  const allowedCategoryTitles = new Set(expectedCategoryTitles);
+  for (const [courseFolder, categoryTitle] of Object.entries(taxonomy.courseCategoryByFolder)) {
+    assert(typeof courseFolder === 'string' && courseFolder.trim() === courseFolder && courseFolder, 'Taxonomy course folders must be non-empty trimmed strings.');
     assert(
-      JSON.stringify(webKeywords) === JSON.stringify(keywords.map(normalizeTaxonomyKeyword)),
-      `Android category keywords no longer match app.js for ${title}.`
+      typeof categoryTitle === 'string' && allowedCategoryTitles.has(categoryTitle),
+      `Taxonomy course ${courseFolder} has unsupported category title: ${categoryTitle}`
     );
-  });
+  }
+
+  return taxonomy;
+}
+
+function buildCategoryIdByCourse(taxonomy, webEntries) {
+  const catalogCourses = new Set();
+  for (const [legacyPath] of webEntries) {
+    const [courseFolder, filenameOrFolder] = legacyPath.split('/');
+    assert(courseFolder && filenameOrFolder, `Invalid lesson hierarchy: ${legacyPath}`);
+    catalogCourses.add(courseFolder);
+  }
+  assert(catalogCourses.size === EXPECTED_CHUNKS, `Expected ${EXPECTED_CHUNKS} course folders, found ${catalogCourses.size}.`);
+
+  const taxonomyCourses = Object.keys(taxonomy.courseCategoryByFolder);
+  const missingCourses = [...catalogCourses].filter(course => !Object.hasOwn(taxonomy.courseCategoryByFolder, course));
+  const unexpectedCourses = taxonomyCourses.filter(course => !catalogCourses.has(course));
+  assert(missingCourses.length === 0, `Course taxonomy is missing: ${missingCourses.join(', ')}`);
+  assert(unexpectedCourses.length === 0, `Course taxonomy has unknown folders: ${unexpectedCourses.join(', ')}`);
   assert(
-    JSON.stringify(rootOrder) === JSON.stringify(CATEGORY_ORDER.map(category => category.title)),
-    'Android CATEGORY_ORDER no longer matches app.js root folder order.'
+    taxonomyCourses.length === EXPECTED_CHUNKS,
+    `Expected ${EXPECTED_CHUNKS} exact course taxonomy entries, found ${taxonomyCourses.length}.`
   );
+
+  const categoryIdByTitle = new Map(CATEGORY_ORDER.map(category => [category.title, category.id]));
+  return new Map(taxonomyCourses.map(course => {
+    const categoryTitle = taxonomy.courseCategoryByFolder[course];
+    const categoryId = categoryIdByTitle.get(categoryTitle);
+    assert(categoryId, `Taxonomy category has no allowed id: ${categoryTitle}`);
+    return [course, categoryId];
+  }));
 }
 
 function findEncodingHazard(value) {
@@ -314,14 +344,6 @@ function normalizedSearchText(value) {
     .toLowerCase();
 }
 
-function deriveCategoryId(topFolder) {
-  const normalized = normalizedSearchText(topFolder);
-  for (const [categoryId, keywords] of CATEGORY_RULES) {
-    if (keywords.some(keyword => normalized.includes(keyword))) return categoryId;
-  }
-  return 'other';
-}
-
 function naturalTokens(value) {
   return normalizedSearchText(value).match(/\d+|\D+/g) || [];
 }
@@ -499,14 +521,15 @@ function attachSalsaPresentations(salsaCourse, courseMap, folderByPath, draftLes
 const dataSource = readUtf8Strict(catalogPath);
 const { pullZoneHost, lessons: webLessons } = parseWebCatalog(dataSource);
 const manifest = parseJson(manifestPath);
+const courseTaxonomySource = readUtf8Strict(courseTaxonomyPath);
+const courseTaxonomy = parseCourseTaxonomy(courseTaxonomySource);
 const salsaCourseSource = readUtf8Strict(salsaCoursePath);
 const salsaCourse = parseSalsaCourse(salsaCourseSource);
 const themeMarkupSource = readUtf8Strict(themeMarkupPath);
 const themeStylesSource = readUtf8Strict(themeStylesPath);
-const appSource = readUtf8Strict(appSourcePath);
-validateWebTaxonomy(appSource);
 const themes = parseThemes(themeMarkupSource, themeStylesSource);
 const webEntries = Object.entries(webLessons);
+const categoryIdByCourse = buildCategoryIdByCourse(courseTaxonomy, webEntries);
 
 assert(manifest.version === 1, `Unsupported summary manifest version: ${manifest.version}`);
 assert(webEntries.length === EXPECTED_LESSONS, `Expected ${EXPECTED_LESSONS} lessons, found ${webEntries.length}.`);
@@ -520,14 +543,14 @@ inputHasher
   .update(canonicalSourceForHash(dataSource))
   .update('\0summaries/manifest.json\0')
   .update(canonicalSourceForHash(readUtf8Strict(manifestPath)))
+  .update('\0course-taxonomy.js\0')
+  .update(canonicalSourceForHash(courseTaxonomySource))
   .update('\0salsa_course.js\0')
   .update(canonicalSourceForHash(salsaCourseSource))
   .update('\0index.html\0')
   .update(canonicalSourceForHash(themeMarkupSource))
   .update('\0style.css\0')
-  .update(canonicalSourceForHash(themeStylesSource))
-  .update('\0app.js\0')
-  .update(canonicalSourceForHash(appSource));
+  .update(canonicalSourceForHash(themeStylesSource));
 const summaries = new Map();
 
 for (const chunk of [...manifest.chunks].sort((a, b) => compareCodePoints(a.id, b.id))) {
@@ -578,10 +601,14 @@ for (const [legacyPath, metadata] of webEntries) {
   assert(pathParts.length >= 2 && pathParts.every(Boolean), `Invalid lesson hierarchy: ${legacyPath}`);
   const filename = pathParts.at(-1);
   assert(VIDEO_EXTENSION_RE.test(filename), `Unsupported catalog extension: ${legacyPath}`);
+  const sourceDisplayTitle = optionalString(metadata.title, `${legacyPath}.title`);
+  assert(!sourceDisplayTitle?.match(/[\r\n]/), `Lesson display title contains a line break: ${legacyPath}`);
+  const displayTitle = sourceDisplayTitle ?? filename.replace(VIDEO_EXTENSION_RE, '');
   const directoryParts = pathParts.slice(0, -1);
   const courseTitle = directoryParts[0];
   const breadcrumbs = directoryParts.slice(1);
-  const categoryId = deriveCategoryId(courseTitle);
+  const categoryId = categoryIdByCourse.get(courseTitle);
+  assert(categoryId, `Course is missing from the authoritative taxonomy: ${courseTitle}`);
   const categoryTitle = CATEGORY_ORDER.find(category => category.id === categoryId)?.title;
   assert(categoryTitle, `Category title is missing: ${categoryId}`);
   const courseId = metadata.summary_chunk;
@@ -655,7 +682,7 @@ for (const [legacyPath, metadata] of webEntries) {
     breadcrumbs,
     playlistId: playlistId(courseId, breadcrumbs),
     filename,
-    title: filename.replace(VIDEO_EXTENSION_RE, ''),
+    title: displayTitle,
     sortOrdinal: -1,
     catalogOrdinal: -1,
     bunnyId: metadata.bunny_id,

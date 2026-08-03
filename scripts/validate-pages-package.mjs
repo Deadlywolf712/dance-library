@@ -99,6 +99,10 @@ if (!index.includes(`sw-register.js?v=${cacheVersion}`)) {
 if (!serviceWorker.includes(`'./sw-register.js?v=${cacheVersion}'`)) {
   fail('The service worker must precache the external registration script.');
 }
+if (!index.includes(`course-taxonomy.js?v=${cacheVersion}`)
+  || !serviceWorker.includes(`'./course-taxonomy.js?v=${cacheVersion}'`)) {
+  fail('The exact course taxonomy must be versioned and precached with the application shell.');
+}
 
 const forbiddenPackageEntries = [
   'android/',
@@ -135,6 +139,9 @@ if (!pullRequestTrigger || /^\s+paths:\s*$/m.test(pullRequestTrigger)) {
 }
 if (!/^\s*-\s*['"]?sw-register\.js['"]?\s*$/m.test(pushTrigger)) {
   fail('Changes to the external service-worker registration script must trigger production deployment.');
+}
+if (!/^\s*-\s*['"]?course-taxonomy\.js['"]?\s*$/m.test(pushTrigger)) {
+  fail('Changes to the authoritative course taxonomy must trigger production deployment.');
 }
 if (/^\s*-\s*['"]?android\//m.test(workflow)) {
   fail('Android-only paths must not trigger the Pages workflow.');

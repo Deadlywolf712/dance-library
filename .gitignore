@@ -28,6 +28,11 @@ test-results/
 playwright-report/
 pipeline_mapping.json
 
+# Local catalog-audit evidence (may contain media frames or machine paths)
+audit/evidence/
+audit/offline-inventory-audit.json
+audit/*-local.json
+
 # Android/Gradle local state and generated packages
 android/.gradle/
 android/.idea/

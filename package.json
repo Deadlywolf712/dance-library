@@ -3,8 +3,9 @@
   "private": true,
   "version": "1.0.0",
   "scripts": {
+    "audit:catalog": "node scripts/audit-catalog-accuracy.mjs",
     "export:android-catalog": "node scripts/export-android-catalog.mjs",
-    "test": "node scripts/validate-site.mjs && node scripts/validate-playback.mjs && node scripts/validate-pages-package.mjs && playwright test",
+    "test": "node scripts/validate-site.mjs && node scripts/validate-playback.mjs && node scripts/validate-pages-package.mjs && node scripts/audit-catalog-accuracy.mjs --no-write && playwright test",
     "test:pages": "node scripts/validate-pages-package.mjs",
     "test:playback": "playwright test"
   },

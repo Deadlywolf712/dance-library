@@ -29,6 +29,10 @@ document.addEventListener('DOMContentLoaded', () => {
         showFatalError('The lesson catalog did not load. Check your connection, then reload the library.');
         return;
     }
+    if (typeof COURSE_TAXONOMY === 'undefined') {
+        showFatalError('The course taxonomy did not load. Check your connection, then reload the library.');
+        return;
+    }
     const playbackCore = globalThis.DanceLibraryPlayback;
     if (!playbackCore) {
         showFatalError('The video playback helpers did not load. Check your connection, then reload the library.');
@@ -43,7 +47,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const HLS_RUNTIME_URL = 'https://cdn.jsdelivr.net/npm/hls.js@1.6.16/dist/hls.min.js';
     const HLS_RUNTIME_INTEGRITY = 'sha384-5E8B0pTlZZJMabWpC0fyYf6OUpe15jJij34BqBAh4NXoHAlLNOjCPRrwtOXOQFAn';
     const HLS_RUNTIME_TIMEOUT_MS = 8000;
-    const SUMMARY_ASSET_VERSION = 13;
+    const SUMMARY_ASSET_VERSION = 14;
     const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
     const preferredScrollBehavior = () => reducedMotionQuery.matches ? 'auto' : 'smooth';
 
@@ -147,6 +151,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function titleFromFilename(filename) {
         return String(filename || '').replace(VIDEO_EXTENSION_RE, '');
+    }
+
+    function titleForVideo(videoPath, info = videoData[videoPath]) {
+        const catalogTitle = typeof info?.title === 'string' ? info.title.trim() : '';
+        if (catalogTitle) return catalogTitle;
+        return titleFromFilename(String(videoPath || '').split('/').pop());
     }
 
     function escapeHtml(value) {
@@ -397,32 +407,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Parse Data into Hierarchical Tree
     function parseDataToTree() {
-        const styleMap = {
-            "Salsa Masterclass": ["salsa masterclass"],
-            "Kizomba Masterclass": ["kizomba masterclass"],
-            "Salsa": ["adolfo", "fernando", "carolina", "marco"],
-            "Bachata": ["alex", "desirée", "korke", "pablo", "kike"],
-            "Zouk": ["arthur", "oksana"],
-            "Kizomba": ["isabelle"]
-        };
-
         // Initialize top level styles
-        Object.keys(styleMap).forEach(s => state.tree[s] = { name: s, subfolders: {}, videos: [] });
-        state.tree["Other"] = { name: "Other", subfolders: {}, videos: [] };
+        COURSE_TAXONOMY.categoryOrder.forEach(style => {
+            state.tree[style] = { name: style, subfolders: {}, videos: [] };
+        });
 
         for (const [path, info] of Object.entries(videoData)) {
             const parts = path.split('/');
-            const filename = parts.pop();
+            parts.pop();
             const topFolder = parts[0];
             
-            let style = "Other";
-            let topFolderLower = topFolder.toLowerCase();
-            for (const [k, v] of Object.entries(styleMap)) {
-                if (v.some(keyword => topFolderLower.includes(keyword))) {
-                    style = k;
-                    break;
-                }
-            }
+            const style = COURSE_TAXONOMY.courseCategoryByFolder[topFolder] || 'Other';
             
             let currentLevel = state.tree[style];
             
@@ -433,18 +428,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 currentLevel = currentLevel.subfolders[folder];
             }
             
-            const title = titleFromFilename(filename);
+            const title = titleForVideo(path, info);
             currentLevel.videos.push({
+                ...info,
                 title,
-                path,
-                ...info
+                path
             });
         }
     }
 
     function sortFolders(folders, isRoot) {
         if (!isRoot) return folders.sort();
-        const order = ["Salsa", "Bachata", "Zouk", "Kizomba", "Salsa Masterclass", "Kizomba Masterclass", "Other"];
+        const order = COURSE_TAXONOMY.categoryOrder;
         return folders.sort((a, b) => {
             const iA = order.indexOf(a);
             const iB = order.indexOf(b);
@@ -1176,9 +1171,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!info) continue;
                 favIndex++;
                 const parts = favPath.split('/');
-                const filename = parts.pop();
-                const title = titleFromFilename(filename);
-                const videoObj = { title, path: favPath, ...info };
+                parts.pop();
+                const title = titleForVideo(favPath, info);
+                const videoObj = { ...info, title, path: favPath };
                 const isRemoved = tilePendingUnfavs.has(favPath);
 
                 const tile = document.createElement('div');
@@ -1243,9 +1238,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 for (const entry of resumeEntries) {
                     const info = videoData[entry.path];
                     const parts = entry.path.split('/');
-                    const filename = parts.pop();
-            const title = titleFromFilename(filename);
-                    const videoObj = { title, path: entry.path, ...info };
+                    parts.pop();
+                    const title = titleForVideo(entry.path, info);
+                    const videoObj = { ...info, title, path: entry.path };
 
                     const tile = document.createElement('div');
                     tile.className = 'course-tile resume-tile';
@@ -1285,8 +1280,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 const withNotes = bks.filter(b => b.n);
                 if (withNotes.length > 0) {
                     const parts = vPath.split('/');
-                    const filename = parts.pop();
-            const title = titleFromFilename(filename);
+                    parts.pop();
+                    const title = titleForVideo(vPath, videoData[vPath]);
                     notedVideos.push({ path: vPath, title, folder: parts.join(' / '), notes: withNotes });
                 }
             }
@@ -1297,7 +1292,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 for (const nv of notedVideos.slice(0, 6)) {
                     const info = videoData[nv.path];
-                    const videoObj = { title: nv.title, path: nv.path, ...info };
+                    const videoObj = { ...info, title: nv.title, path: nv.path };
 
                     const card = document.createElement('div');
                     card.className = 'course-tile recent-notes-card';
@@ -2990,8 +2985,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     md += '## Favorites\n\n';
                     for (const fav of filtered) {
                         const parts = fav.split('/');
-                        const filename = parts.pop();
-            const title = titleFromFilename(filename);
+                        parts.pop();
+                        const title = titleForVideo(fav, videoData[fav]);
                         md += `- **${title}** — _${parts.join(' / ')}_\n`;
                     }
                     md += '\n';
@@ -3017,8 +3012,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         bookmarks.sort((a, b) => a.t - b.t);
 
                         const parts = videoPath.split('/');
-                        const filename = parts.pop();
-            const title = titleFromFilename(filename);
+                        parts.pop();
+                        const title = titleForVideo(videoPath, videoData[videoPath]);
 
                         md += `### ${title}\n`;
                         md += `_${parts.join(' / ')}_\n\n`;
@@ -3045,8 +3040,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     md += '## Video Summaries\n\n';
                     for (const videoPath of withSummaries) {
                         const parts = videoPath.split('/');
-                        const filename = parts.pop();
-            const title = titleFromFilename(filename);
+                        parts.pop();
+                        const title = titleForVideo(videoPath, videoData[videoPath]);
 
                         md += `### ${title}\n`;
                         md += `_${parts.join(' / ')}_\n\n`;
@@ -3062,8 +3057,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (filtered.length > 0) {
                     md += '## Watch History\n\n';
                     for (const w of filtered) {
-                        const parts = w.split('/');
-                        const title = titleFromFilename(parts.pop());
+                        const title = titleForVideo(w, videoData[w]);
                         const ago = state.lastWatched[w] ? ' — ' + timeAgo(state.lastWatched[w]) : '';
                         md += `- ${title}${ago}\n`;
                     }
@@ -3513,9 +3507,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const info = videoData[videoPath];
         if (!info) return null;
         const parts = videoPath.split('/');
-        const filename = parts.pop();
-            const title = titleFromFilename(filename);
-        return { title, path: videoPath, folderPath: parts.join(' / '), ...info };
+        parts.pop();
+        const title = titleForVideo(videoPath, info);
+        return { ...info, title, path: videoPath, folderPath: parts.join(' / ') };
     }
 
     // Track unfavorited items during this notes view session (soft delete)
@@ -3550,7 +3544,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!Array.isArray(arr) || arr.length === 0) return false;
             if (!sq) return true;
             // Match against video title, path, or note text
-            const searchStr = p.toLowerCase();
+            const searchStr = `${p} ${titleForVideo(p, videoData[p])}`.toLowerCase();
             if (searchStr.includes(sq)) return true;
             return arr.some(bk => typeof bk === 'object' && bk.n && bk.n.toLowerCase().includes(sq));
         });
@@ -3861,8 +3855,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         for (const [path, info] of Object.entries(videoData)) {
             const parts = path.split('/');
-            const filename = parts[parts.length - 1];
-            const title = titleFromFilename(filename);
+            const title = titleForVideo(path, info);
             const searchStr = (title + ' ' + parts.slice(0, -1).join(' ')).toLowerCase();
 
             if (searchStr.includes(q)) {
@@ -3887,7 +3880,7 @@ document.addEventListener('DOMContentLoaded', () => {
             result.className = 'spotlight-result' + (i === 0 ? ' active' : '');
             result.innerHTML = `<span class="spotlight-result-title">${escapeHtml(m.title)}</span><span class="spotlight-result-path">${escapeHtml(m.folderPath)}</span>`;
             result.addEventListener('click', () => {
-                const videoObj = { title: m.title, path: m.path, ...m.info };
+                const videoObj = { ...m.info, title: m.title, path: m.path };
                 closeSpotlight({ restoreFocus: false });
                 loadVideo(videoObj);
             });
@@ -4024,7 +4017,9 @@ document.addEventListener('DOMContentLoaded', () => {
             .map(p => ({ path: p, lastWatched: state.lastWatched[p] || 0 }))
             .sort((a, b) => b.lastWatched - a.lastWatched);
 
-        const filtered = sq ? entries.filter(e => e.path.toLowerCase().includes(sq)) : entries;
+        const filtered = sq
+            ? entries.filter(entry => `${entry.path} ${titleForVideo(entry.path, videoData[entry.path])}`.toLowerCase().includes(sq))
+            : entries;
 
         if (filtered.length === 0) {
             historyContent.innerHTML = sq
@@ -4039,8 +4034,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const info = videoData[entry.path];
             if (!info) continue;
             const parts = entry.path.split('/');
-            const filename = parts.pop();
-            const title = titleFromFilename(filename);
+            parts.pop();
+            const title = titleForVideo(entry.path, info);
             const folder = parts.join(' / ');
             const ago = entry.lastWatched ? timeAgo(entry.lastWatched) : '';
             const resumeTime = positions[entry.path];
@@ -4069,10 +4064,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const path = item.dataset.path;
         const info = videoData[path];
         if (!info) return;
-        const parts = path.split('/');
-        const filename = parts.pop();
-            const title = titleFromFilename(filename);
-        const videoObj = { title, path, ...info };
+        const title = titleForVideo(path, info);
+        const videoObj = { ...info, title, path };
         closeHistoryModal({ restoreFocus: false });
         loadVideo(videoObj);
     });
@@ -4277,8 +4270,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 const withNotes = bks.filter(b => b.n);
                 if (withNotes.length === 0) continue;
                 const parts = path.split('/');
-                const filename = parts.pop();
-            const title = titleFromFilename(filename);
+                parts.pop();
+                const title = titleForVideo(path, videoData[path]);
                 body += title + ' (' + parts.join(' / ') + ')\n';
                 for (const bk of withNotes) {
                     body += '  ' + formatTime(bk.t) + ' — ' + bk.n + '\n';
@@ -4300,8 +4293,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!Array.isArray(arr) || arr.length === 0) continue;
                 const bks = typeof arr[0] === 'object' ? arr : arr.map(t => ({ t, n: '' }));
                 const parts = path.split('/');
-                const filename = parts.pop();
-                const title = titleFromFilename(filename);
+                parts.pop();
+                const title = titleForVideo(path, videoData[path]);
                 html += '<h2>' + escapeHtml(title) + ' <small style="color:#999;">' + escapeHtml(parts.join(' / ')) + '</small></h2>';
                 for (const bk of bks) {
                     const noteText = bk.n ? ' — ' + bk.n : '';

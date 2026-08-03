@@ -86,6 +86,24 @@ class CatalogTest {
         assertEquals(6, catalog.folders.count { it.presentation?.kind == "week" })
         assertEquals(47, catalog.folders.count { it.presentation?.kind == "lesson-group" })
         assertEquals("Multiply Your Moves", catalog.courses.single { it.title == "Salsa Masterclass" }.presentation?.title)
+
+        val carolinaRosaLessons = catalog.lessons.filter { it.course.startsWith("Carolina Rosa") }
+        assertEquals(30, carolinaRosaLessons.size)
+        assertTrue(carolinaRosaLessons.all { it.categoryId == "bachata" && it.categoryTitle == "Bachata" })
+        assertFalse(catalog.lessons.any { it.course.startsWith("Carolina Rosa") && it.categoryId == "salsa" })
+
+        val marcoEspejoLessons = catalog.lessons.filter { it.course.startsWith("Marco Espejo") }
+        assertEquals(25, marcoEspejoLessons.size)
+        assertTrue(marcoEspejoLessons.all { it.categoryId == "bachata" && it.categoryTitle == "Bachata" })
+        assertFalse(catalog.lessons.any { it.course.startsWith("Marco Espejo") && it.categoryId == "salsa" })
+
+        val correctedTurnsLesson = catalog.lessons.single { it.bunnyId == "889ba4f6-8181-495b-9001-ed3b40c701a2" }
+        assertEquals("07 - Turns in 1/5", correctedTurnsLesson.title)
+        assertEquals("Carolina Rosa - Beginner/07 - Turns in 15.mp4", correctedTurnsLesson.legacyPath)
+
+        val correctedThreeByThreeLesson = catalog.lessons.single { it.bunnyId == "091ce8f2-de17-4eda-a1a1-bb62d048926b" }
+        assertEquals("09 - 3X3 Steps", correctedThreeByThreeLesson.title)
+        assertEquals("Carolina Rosa - Advanced/09 - 33 Steps.mp4", correctedThreeByThreeLesson.legacyPath)
     }
 
     @Test

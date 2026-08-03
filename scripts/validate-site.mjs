@@ -8,7 +8,7 @@ const read = filename => fs.readFileSync(path.join(root, filename), 'utf8');
 const fail = message => { throw new Error(message); };
 
 for (const filename of [
-  'index.html', 'style.css', 'app.js', 'playback-core.js', 'data.js', 'salsa_course.js',
+  'index.html', 'style.css', 'app.js', 'course-taxonomy.js', 'playback-core.js', 'data.js', 'salsa_course.js',
   'manifest.json', 'sw.js', 'icon.svg', 'icon-192.png', 'icon-512.png'
 ]) {
   if (!fs.existsSync(path.join(root, filename))) fail(`Missing required asset: ${filename}`);
@@ -91,6 +91,45 @@ const catalog = catalogContext.__catalog;
 const lessonPaths = Object.keys(catalog);
 if (lessonPaths.length !== 795) fail(`Expected 795 lessons, found ${lessonPaths.length}.`);
 
+const taxonomyContext = {};
+vm.createContext(taxonomyContext);
+vm.runInContext(
+  `${read('course-taxonomy.js')}\n;globalThis.__taxonomy = COURSE_TAXONOMY;`,
+  taxonomyContext,
+  { filename: 'course-taxonomy.js' }
+);
+const taxonomy = taxonomyContext.__taxonomy;
+const categoryOrder = [...taxonomy.categoryOrder];
+const courseCategoryEntries = Object.entries(taxonomy.courseCategoryByFolder);
+const courseFolders = [...new Set(lessonPaths.map(lessonPath => lessonPath.split('/')[0]))].sort();
+const mappedCourseFolders = courseCategoryEntries.map(([courseFolder]) => courseFolder).sort();
+if (courseCategoryEntries.length !== 34) {
+  fail(`Expected an exact taxonomy for 34 course folders, found ${courseCategoryEntries.length}.`);
+}
+if (JSON.stringify(mappedCourseFolders) !== JSON.stringify(courseFolders)) {
+  const missing = courseFolders.filter(courseFolder => !mappedCourseFolders.includes(courseFolder));
+  const unexpected = mappedCourseFolders.filter(courseFolder => !courseFolders.includes(courseFolder));
+  fail(`Course taxonomy mismatch. Missing: ${missing.join(', ') || 'none'}. Unexpected: ${unexpected.join(', ') || 'none'}.`);
+}
+if (new Set(categoryOrder).size !== categoryOrder.length || categoryOrder.at(-1) !== 'Other') {
+  fail('Course taxonomy category order must contain unique categories and finish with Other.');
+}
+for (const [courseFolder, category] of courseCategoryEntries) {
+  if (!categoryOrder.includes(category) || category === 'Other') {
+    fail(`Course taxonomy has an invalid category for ${courseFolder}: ${category}.`);
+  }
+}
+for (const courseFolder of [
+  'Carolina Rosa - Advanced',
+  'Carolina Rosa - Beginner',
+  'Carolina Rosa - Intermediate',
+  'Marco Espejo - Marco Espejo Style'
+]) {
+  if (taxonomy.courseCategoryByFolder[courseFolder] !== 'Bachata') {
+    fail(`${courseFolder} must be categorized as Bachata.`);
+  }
+}
+
 const summaryManifest = JSON.parse(read('summaries/manifest.json'));
 if (summaryManifest.lessonCount !== lessonPaths.length || summaryManifest.summaryCount !== lessonPaths.length) {
   fail('Summary manifest counts do not match the lesson catalog.');
@@ -117,6 +156,9 @@ for (const lessonPath of lessonPaths) {
   const info = catalog[lessonPath];
   if (!info.bunny_id) fail(`Lesson is missing bunny_id: ${lessonPath}`);
   if (!info.summary_chunk) fail(`Lesson is missing summary_chunk: ${lessonPath}`);
+  if (Object.hasOwn(info, 'title') && (typeof info.title !== 'string' || !info.title.trim())) {
+    fail(`Lesson title override must be a non-empty string: ${lessonPath}`);
+  }
   if (!summaries.has(lessonPath)) fail(`Lesson is missing its lazy summary: ${lessonPath}`);
 }
 
@@ -128,10 +170,13 @@ if (!appVersion || appVersion !== swVersion) fail('HTML asset version and servic
 const summaryVersion = app.match(/SUMMARY_ASSET_VERSION\s*=\s*(\d+)/)?.[1];
 if (summaryVersion !== swVersion) fail('Summary asset version and service-worker cache version differ.');
 if (!/m4v\|apk/.test(sw)) fail('The service worker must never cache Android installer downloads.');
-for (const asset of ['style.css', 'app.js', 'data.js', 'salsa_course.js', 'playback-core.js']) {
+for (const asset of ['style.css', 'app.js', 'course-taxonomy.js', 'data.js', 'salsa_course.js', 'playback-core.js']) {
   if (!index.includes(`${asset}?v=${swVersion}`) || !sw.includes(`./${asset}?v=${swVersion}`)) {
     fail(`${asset} must use the current HTML and service-worker asset version.`);
   }
+}
+if (index.indexOf('course-taxonomy.js') > index.indexOf('app.js')) {
+  fail('The course taxonomy must load before the application.');
 }
 if (!app.includes('hls.js@1.6.16/dist/hls.min.js') || !/sha384-[A-Za-z0-9+/=]{64}/.test(app)) {
   fail('The lazy HLS runtime must remain pinned and protected by an integrity hash.');

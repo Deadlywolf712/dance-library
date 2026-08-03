@@ -941,6 +941,7 @@ const videoData = {
     "summary_chunk": "carolina-rosa-advanced-720dd31a"
   },
   "Carolina Rosa - Advanced/09 - 33 Steps.mp4": {
+    "title": "09 - 3X3 Steps",
     "bunny_id": "091ce8f2-de17-4eda-a1a1-bb62d048926b",
     "collection_id": "543f3992-d6ae-4542-9d21-3e6376295164",
     "summary_chunk": "carolina-rosa-advanced-720dd31a"
@@ -956,6 +957,7 @@ const videoData = {
     "summary_chunk": "carolina-rosa-beginner-516aa4e0"
   },
   "Carolina Rosa - Beginner/02 - Punta Talón Point  Heel.mp4": {
+    "title": "02 - Punta Talón (Point & Heel)",
     "bunny_id": "4d987ba4-4852-48ce-b945-bbfa9a392a4c",
     "collection_id": "56de97a3-0e0a-4ed2-9f31-53ed2957ab9b",
     "summary_chunk": "carolina-rosa-beginner-516aa4e0"
@@ -971,6 +973,7 @@ const videoData = {
     "summary_chunk": "carolina-rosa-beginner-516aa4e0"
   },
   "Carolina Rosa - Beginner/05 - Engaño Trick.mp4": {
+    "title": "05 - Engaño (Trick)",
     "bunny_id": "d97cb60d-5130-4d5e-a8da-fc6a0f1098fb",
     "collection_id": "56de97a3-0e0a-4ed2-9f31-53ed2957ab9b",
     "summary_chunk": "carolina-rosa-beginner-516aa4e0"
@@ -981,11 +984,13 @@ const videoData = {
     "summary_chunk": "carolina-rosa-beginner-516aa4e0"
   },
   "Carolina Rosa - Beginner/07 - Turns in 15.mp4": {
+    "title": "07 - Turns in 1/5",
     "bunny_id": "889ba4f6-8181-495b-9001-ed3b40c701a2",
     "collection_id": "56de97a3-0e0a-4ed2-9f31-53ed2957ab9b",
     "summary_chunk": "carolina-rosa-beginner-516aa4e0"
   },
   "Carolina Rosa - Beginner/08 - Diagonals in 1  Chachas in 3 4.mp4": {
+    "title": "08 - Diagonals in 1 & Chachas in 3, 4",
     "bunny_id": "ac4cae84-0756-4333-9526-d0fb52462e41",
     "collection_id": "56de97a3-0e0a-4ed2-9f31-53ed2957ab9b",
     "summary_chunk": "carolina-rosa-beginner-516aa4e0"
@@ -1021,6 +1026,7 @@ const videoData = {
     "summary_chunk": "carolina-rosa-intermediate-d2293794"
   },
   "Carolina Rosa - Intermediate/05 - Twist and Tikitiki.mp4": {
+    "title": "05 - Twist & Tikitiki",
     "bunny_id": "0c28a7ae-2083-4e6f-b953-6de54e7fc103",
     "collection_id": "601a5a8b-850d-430c-974c-5bdfd5c4cdf0",
     "summary_chunk": "carolina-rosa-intermediate-d2293794"

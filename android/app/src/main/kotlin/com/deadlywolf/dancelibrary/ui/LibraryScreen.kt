@@ -275,7 +275,7 @@ private fun BrowseBreadcrumbs(state: LibraryUiState, viewModel: LibraryViewModel
         is BrowseLocation.Folder -> buildList {
             add("Library" to BrowseLocation.Root)
             tree.categoryForFolder(location.folderId)?.let { add(it.title to BrowseLocation.Category(it.id)) }
-            tree.folderBreadcrumb(location.folderId).forEach { folder -> add(folder.name to BrowseLocation.Folder(folder.id)) }
+            tree.folderBreadcrumb(location.folderId).forEach { folder -> add(folder.displayName to BrowseLocation.Folder(folder.id)) }
         }
     }
     LazyRow(
@@ -312,9 +312,9 @@ private fun FolderCard(folder: CatalogFolder, state: LibraryUiState, viewModel: 
     val lessons = remember(state.tree, folder.id, state.practice.watched) { state.tree?.lessonsUnder(folder.id).orEmpty() }
     val watched = lessons.count { it.id in state.practice.watched }
     FolderLikeCard(
-        title = folder.name,
+        title = folder.displayName,
         subtitle = buildString {
-            folder.presentation?.title?.takeIf { it.isNotBlank() && it != folder.name }?.let {
+            folder.presentation?.title?.takeIf { it.isNotBlank() && it != folder.displayName }?.let {
                 append(it).append(" · ")
             }
             folder.presentation?.description?.takeIf(String::isNotBlank)?.let {

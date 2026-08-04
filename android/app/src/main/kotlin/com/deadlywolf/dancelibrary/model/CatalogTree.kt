@@ -19,7 +19,7 @@ sealed interface BrowseNode {
 
     data class Folder(val folder: CatalogFolder) : BrowseNode {
         override val id: String = folder.id
-        override val title: String = folder.name
+        override val title: String = folder.displayName
         override val lessonCount: Int = folder.lessonCount
     }
 

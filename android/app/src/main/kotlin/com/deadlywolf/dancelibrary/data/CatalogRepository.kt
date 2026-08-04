@@ -5,6 +5,7 @@ import com.deadlywolf.dancelibrary.model.CatalogFolder
 import com.deadlywolf.dancelibrary.model.DanceCatalog
 import com.deadlywolf.dancelibrary.model.Lesson
 import com.deadlywolf.dancelibrary.model.ThemeCssVariables
+import com.deadlywolf.dancelibrary.model.isAvailable
 import com.google.gson.Gson
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -38,7 +39,7 @@ object CatalogValidator {
     private val videoExtension = Regex("\\.(mp4|mov|m4v)$", RegexOption.IGNORE_CASE)
 
     fun requireValid(catalog: DanceCatalog) {
-        require(catalog.schemaVersion == 2) { "Unsupported catalog schema ${catalog.schemaVersion}" }
+        require(catalog.schemaVersion == 3) { "Unsupported catalog schema ${catalog.schemaVersion}" }
         require(sha256.matches(catalog.sourceSha256)) { "Catalog source hash is invalid" }
         require(hostname.matches(catalog.pullZoneHost)) { "Catalog pull zone is not a Bunny CDN hostname" }
         require(catalog.lessonCount == catalog.lessons.size) { "Catalog lesson count does not match payload" }
@@ -77,6 +78,9 @@ object CatalogValidator {
 
         catalog.courses.groupBy { it.categoryId }.forEach { (categoryId, courses) ->
             require(categoryId in categoryById) { "Course category does not exist: $categoryId" }
+            require(courses.all { it.title.isNotBlank() && it.displayName.isNotBlank() }) {
+                "Course metadata is incomplete in category $categoryId"
+            }
             requireContiguousOrdinals("courses in $categoryId", courses.map { it.sortOrdinal })
         }
 
@@ -87,7 +91,9 @@ object CatalogValidator {
         }
 
         catalog.folders.forEach { folder ->
-            require(folder.id.isNotBlank() && folder.name.isNotBlank()) { "Folder metadata is incomplete" }
+            require(folder.id.isNotBlank() && folder.name.isNotBlank() && folder.displayName.isNotBlank()) {
+                "Folder metadata is incomplete"
+            }
             require(folder.pathSegments.isNotEmpty() && folder.pathSegments.last() == folder.name) {
                 "Folder path is invalid: ${folder.id}"
             }
@@ -95,6 +101,8 @@ object CatalogValidator {
             require(folder.categoryId == course.categoryId) { "Folder category diverges from course: ${folder.id}" }
             if (folder.parentId == null) {
                 require(folder.pathSegments == listOf(course.title)) { "Course root path is invalid: ${folder.id}" }
+                require(folder.name == course.title) { "Course root name diverges from stable title: ${folder.id}" }
+                require(folder.displayName == course.displayName) { "Course root display name diverges: ${folder.id}" }
                 require(course.rootFolderId == folder.id) { "Unreferenced course root folder: ${folder.id}" }
                 require(folder.sortOrdinal == course.sortOrdinal) { "Course and root-folder order diverged: ${course.id}" }
             } else {
@@ -103,6 +111,7 @@ object CatalogValidator {
                     "Folder parent crosses a course or category: ${folder.id}"
                 }
                 require(folder.pathSegments == parent.pathSegments + folder.name) { "Folder path diverges from parent: ${folder.id}" }
+                require(folder.displayName == folder.name) { "Nested folder display name diverges: ${folder.id}" }
             }
             validatePresentation(folder)
         }
@@ -123,7 +132,9 @@ object CatalogValidator {
             require(runCatching { UUID.fromString(lesson.id) }.isSuccess) { "Invalid lesson id: ${lesson.id}" }
             require(lesson.id == lesson.bunnyId) { "Lesson id and Bunny id diverged: ${lesson.id}" }
             require(ids.add(lesson.id)) { "Duplicate lesson id: ${lesson.id}" }
-            require(lesson.title.isNotBlank() && lesson.course.isNotBlank()) { "Lesson metadata is incomplete: ${lesson.id}" }
+            require(lesson.title.isNotBlank() && lesson.course.isNotBlank() && lesson.courseDisplayName.isNotBlank()) {
+                "Lesson metadata is incomplete: ${lesson.id}"
+            }
             require(lesson.legacyPath.isNotBlank()) { "Lesson path is missing: ${lesson.id}" }
             require(lesson.playlistId.isNotBlank()) { "Lesson playlist is missing: ${lesson.id}" }
             val folder = requireNotNull(folderById[lesson.folderId]) { "Lesson folder does not exist: ${lesson.id}" }
@@ -135,6 +146,7 @@ object CatalogValidator {
                 "Lesson category title diverges: ${lesson.id}"
             }
             require(lesson.course == course.title) { "Lesson course title diverges: ${lesson.id}" }
+            require(lesson.courseDisplayName == course.displayName) { "Lesson course display name diverges: ${lesson.id}" }
             require(lesson.breadcrumbs == folder.pathSegments.drop(1)) { "Lesson breadcrumbs diverge: ${lesson.id}" }
             require(lesson.legacyPath.substringBeforeLast('/') == folder.pathSegments.joinToString("/")) {
                 "Lesson path diverges from folder: ${lesson.id}"
@@ -144,6 +156,12 @@ object CatalogValidator {
             }
             require(lesson.title.none { it == '\r' || it == '\n' }) {
                 "Lesson display title is invalid: ${lesson.id}"
+            }
+            require(lesson.availability == "available" || lesson.availability == "unavailable") {
+                "Lesson availability is invalid: ${lesson.id}"
+            }
+            require(lesson.isAvailable == lesson.availabilityReason.isNullOrBlank()) {
+                "Lesson availability reason disagrees: ${lesson.id}"
             }
             require(lesson.chapters.zipWithNext().all { (a, b) -> a.seconds < b.seconds }) {
                 "Lesson chapters are not strictly ordered: ${lesson.id}"

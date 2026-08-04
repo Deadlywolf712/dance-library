@@ -45,5 +45,37 @@ const COURSE_TAXONOMY = Object.freeze({
         'Pablo  Raquel - Intermediate': 'Bachata',
         'Pablo  Raquel - IntermediateAdvanced': 'Bachata',
         'Salsa Masterclass': 'Salsa Masterclass'
+    }),
+    // Display-only aliases. Keys remain the exact top-level folders used by data.js routes.
+    courseDisplayNameByFolder: Object.freeze({
+        'Adolfo Indacochea  Tania Cannarsa - Salsa On2 Advanced': 'Adolfo Indacochea & Tania Cannarsa - Salsa On2 Advanced',
+        'Adolfo Indacochea  Tania Cannarsa - Salsa On2 Beginner': 'Adolfo Indacochea & Tania Cannarsa - Salsa On2 Beginner',
+        'Adolfo Indacochea  Tania Cannarsa - Salsa On2 Intermediate': 'Adolfo Indacochea & Tania Cannarsa - Salsa On2 Intermediate',
+        'Fernando Sosa  Tatiana Bonaguro - Sosa Style Advanced': 'Fernando Sosa & Tatiana Bonaguro - Sosa Style Advanced',
+        'Fernando Sosa  Tatiana Bonaguro - Sosa Style Beginner': 'Fernando Sosa & Tatiana Bonaguro - Sosa Style Beginner',
+        'Fernando Sosa  Tatiana Bonaguro - Sosa Style Intermediate': 'Fernando Sosa & Tatiana Bonaguro - Sosa Style Intermediate',
+        'Fernando Sosa  Tatiana Bonaguro - Sosa Style On 2': 'Fernando Sosa & Tatiana Bonaguro - Sosa Style On 2',
+        'Fernando Sosa  Tatiana Bonaguro - Sosa Style Upgrade': 'Fernando Sosa & Tatiana Bonaguro - Sosa Style Upgrade',
+        'Alex  Desirée - Advanced': 'Alex & Desirée — Advanced',
+        'Alex  Desirée - Beginner': 'Alex & Desirée — Beginner',
+        'Alex  Desirée - Intermediate': 'Alex & Desirée — Intermediate',
+        'Kike  Nahir - Kike  Nahir Combinations': 'Kike & Nahir — Bachata Sensual Combinations',
+        'Korke  Judith - Advanced': 'Korke & Judith — Advanced',
+        'Korke  Judith - Bachata Sensual 2025 New Techniques and Cadences': 'Korke & Judith — Bachata Sensual 2025: New Techniques and Cadences (Intermediate/Advanced)',
+        'Korke  Judith - BeginnerIntermediate': 'Korke & Judith — Beginner/Intermediate',
+        'Korke  Judith - Fundamentals of Bachata Sensual': 'Korke & Judith — Fundamentals of Bachata Sensual (Beginner)',
+        'Korke  Judith - Intermediate  Advanced': 'Korke & Judith — Intermediate/Advanced',
+        'Marco Espejo - Marco Espejo Style': 'Marco Espejo — Marco Espejo Style (Open Level)',
+        'Pablo  Raquel - Advanced': 'Pablo & Raquel — Advanced',
+        'Pablo  Raquel - Intermediate': 'Pablo & Raquel — Intermediate/Advanced',
+        'Pablo  Raquel - IntermediateAdvanced': 'Pablo & Raquel — Smooth Bachata Intermediate/Advanced',
+        'Arthur  Oksana - Zouk Advanced': 'Arthur & Oksana — Zouk Advanced',
+        'Arthur  Oksana - Zouk Beginner': 'Arthur & Oksana — Zouk Beginner',
+        'Arthur  Oksana - Zouk Beginner-Intermediate': 'Arthur & Oksana — Zouk Beginner–Intermediate',
+        'Arthur  Oksana - Zouk Intermediate': 'Arthur & Oksana — Zouk Intermediate',
+        'Arthur  Oksana - Zouk Intermediate-Advanced': 'Arthur & Oksana — Zouk Intermediate–Advanced',
+        'Isabelle  Felicien - Advanced': 'Isabelle & Felicien — Kizomba Advanced',
+        'Isabelle  Felicien - Beginner': 'Isabelle & Felicien — Kizomba Beginner',
+        'Isabelle  Felicien - Intermediate': 'Isabelle & Felicien — Kizomba Intermediate'
     })
 });

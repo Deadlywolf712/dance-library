@@ -47,9 +47,29 @@ document.addEventListener('DOMContentLoaded', () => {
     const HLS_RUNTIME_URL = 'https://cdn.jsdelivr.net/npm/hls.js@1.6.16/dist/hls.min.js';
     const HLS_RUNTIME_INTEGRITY = 'sha384-5E8B0pTlZZJMabWpC0fyYf6OUpe15jJij34BqBAh4NXoHAlLNOjCPRrwtOXOQFAn';
     const HLS_RUNTIME_TIMEOUT_MS = 8000;
-    const SUMMARY_ASSET_VERSION = 14;
+    const SUMMARY_ASSET_VERSION = 15;
     const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
     const preferredScrollBehavior = () => reducedMotionQuery.matches ? 'auto' : 'smooth';
+    const courseDisplayNames = COURSE_TAXONOMY.courseDisplayNameByFolder || Object.freeze({});
+
+    function displayCourseName(courseFolder) {
+        return courseDisplayNames[courseFolder] || courseFolder;
+    }
+
+    function displayBrowsePathSegment(segment, index) {
+        return index === 1 ? displayCourseName(segment) : segment;
+    }
+
+    function formatVideoFolderPath(folderParts, separator = ' / ') {
+        return folderParts
+            .map((part, index) => index === 0 ? displayCourseName(part) : part)
+            .join(separator);
+    }
+
+    function searchableVideoText(videoPath, title) {
+        const courseFolder = videoPath.split('/')[0] || '';
+        return `${videoPath} ${displayCourseName(courseFolder)} ${title}`.toLowerCase();
+    }
 
     document.documentElement.classList.toggle('hosted-site', isHosted);
 
@@ -278,6 +298,9 @@ document.addEventListener('DOMContentLoaded', () => {
         videoView: document.getElementById('video-view'),
         courseGrid: document.getElementById('course-grid'),
         videoPlayer: document.getElementById('video-player'),
+        videoUnavailable: document.getElementById('video-unavailable'),
+        videoUnavailableReason: document.getElementById('video-unavailable-reason'),
+        videoControlsBar: document.querySelector('.video-controls-bar'),
         videoRetryBtn: document.getElementById('video-retry-btn'),
         
         videoTitle: document.getElementById('video-title'),
@@ -780,12 +803,14 @@ document.addEventListener('DOMContentLoaded', () => {
         
         for (const folderName of folderNames) {
             const node = foldersObj[folderName];
+            const folderDisplayName = depth === 1 ? displayCourseName(folderName) : folderName;
             
             if (countVideos(node) === 0) continue; // Skip empty folders entirely
             
             const groupDiv = document.createElement('div');
             groupDiv.className = 'nav-group';
             groupDiv.dataset.folderName = folderName;
+            groupDiv.dataset.searchText = `${folderName} ${folderDisplayName}`.toLowerCase();
 
             const headerBtn = document.createElement('div');
             headerBtn.className = 'nav-header';
@@ -804,10 +829,10 @@ document.addEventListener('DOMContentLoaded', () => {
             headerBtn.innerHTML = `
                 <button type="button" class="nav-folder-toggle">
                     ${iconSvg}
-                    <span style="word-break: break-word; line-height: 1.3; font-size: 0.95em; padding-right: 8px;">${escapeHtml(folderName)}</span>
+                    <span style="word-break: break-word; line-height: 1.3; font-size: 0.95em; padding-right: 8px;">${escapeHtml(folderDisplayName)}</span>
                     <svg class="chevron" viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>
                 </button>
-                <button type="button" class="open-tiles-btn" title="Open in tile view" aria-label="Open ${escapeHtml(folderName)} in tile view">
+                <button type="button" class="open-tiles-btn" title="Open in tile view" aria-label="Open ${escapeHtml(folderDisplayName)} in tile view">
                     ${gridIconSvg}
                 </button>
             `;
@@ -819,7 +844,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const folderToggle = headerBtn.querySelector('.nav-folder-toggle');
             folderToggle.setAttribute('aria-controls', contentDiv.id);
             folderToggle.setAttribute('aria-expanded', 'false');
-            folderToggle.setAttribute('aria-label', `Expand or collapse ${folderName}`);
+            folderToggle.setAttribute('aria-label', `Expand or collapse ${folderDisplayName}`);
             
             const fullPath = [...currentPath, folderName];
             
@@ -841,7 +866,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     const mainButton = document.createElement('button');
                     mainButton.type = 'button';
                     mainButton.className = 'video-link-main';
-                    mainButton.setAttribute('aria-label', `Play ${video.title}`);
+                    mainButton.setAttribute('aria-label', lessonIsUnavailable(video)
+                        ? `Open ${video.title}; correct source unavailable`
+                        : `Play ${video.title}`);
 
                     const titleSpan = document.createElement('span');
                     titleSpan.className = 'video-link-title';
@@ -879,6 +906,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     });
 
                     mainButton.appendChild(titleSpan);
+                    if (lessonIsUnavailable(video)) {
+                        const statusBadge = document.createElement('span');
+                        statusBadge.className = 'lesson-status-badge';
+                        statusBadge.textContent = 'Source unavailable';
+                        mainButton.appendChild(statusBadge);
+                    }
                     link.appendChild(mainButton);
                     link.appendChild(starBtn);
                     link.dataset.path = video.path;
@@ -1043,7 +1076,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (idx === path.length - 1) {
                 const current = document.createElement('span');
                 current.style.color = 'var(--text-main)';
-                current.textContent = p;
+                current.textContent = displayBrowsePathSegment(p, idx);
                 homeHeader.appendChild(current);
             } else {
                 const crumb = document.createElement('a');
@@ -1052,7 +1085,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 crumb.dataset.level = String(idx);
                 crumb.style.color = 'var(--accent)';
                 crumb.style.textDecoration = 'none';
-                crumb.textContent = p;
+                crumb.textContent = displayBrowsePathSegment(p, idx);
                 homeHeader.appendChild(crumb);
             }
         });
@@ -1195,7 +1228,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         </button>
                         <button type="button" class="tile-fav-toggle" data-path="${escapeHtml(favPath)}" title="${isRemoved ? 'Re-favorite' : 'Unfavorite'}">${isRemoved ? 'Re-favorite' : 'Unfavorite'}</button>
                     </div>
-                    <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: auto; opacity: 0.7;">${escapeHtml(parts.join(' / '))}</p>
+                    <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: auto; opacity: 0.7;">${escapeHtml(formatVideoFolderPath(parts))}</p>
                 `;
                 tile.querySelector('.tile-main-btn').addEventListener('click', () => loadVideo(videoObj));
                 // Toggle button
@@ -1255,7 +1288,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             <h3 class="video-tile-title" style="margin-bottom: 0; color: var(--text-main); font-weight: normal; line-height: 1.4;">${escapeHtml(title)}</h3>
                         </div>
                         <p style="font-size: 0.75rem; color: var(--text-muted); margin: 4px 0 0 0;">at ${formatTime(entry.time)}${agoText ? ' · ' + agoText : ''}</p>
-                        <p style="font-size: 0.7rem; color: var(--text-muted); margin-top: 4px; opacity: 0.7;">${escapeHtml(parts.join(' / '))}</p>
+                        <p style="font-size: 0.7rem; color: var(--text-muted); margin-top: 4px; opacity: 0.7;">${escapeHtml(formatVideoFolderPath(parts))}</p>
                     `;
                     tile.addEventListener('click', () => loadVideo(videoObj));
                     makeKeyboardAccessible(tile, () => loadVideo(videoObj), `Resume ${title} from ${formatTime(entry.time)}`);
@@ -1282,7 +1315,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const parts = vPath.split('/');
                     parts.pop();
                     const title = titleForVideo(vPath, videoData[vPath]);
-                    notedVideos.push({ path: vPath, title, folder: parts.join(' / '), notes: withNotes });
+                    notedVideos.push({ path: vPath, title, folder: formatVideoFolderPath(parts), notes: withNotes });
                 }
             }
             if (notedVideos.length > 0) {
@@ -1351,6 +1384,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const subfolders = sortFolders(Object.keys(folderNode.subfolders), path.length === 0);
         for (const fName of subfolders) {
             const node = folderNode.subfolders[fName];
+            const folderDisplayName = path.length === 1 ? displayCourseName(fName) : fName;
             tileIndex++;
             const numVideos = countVideos(node);
             if (numVideos === 0) continue;
@@ -1382,7 +1416,7 @@ document.addEventListener('DOMContentLoaded', () => {
             tile.innerHTML = `
                 <div style="display: flex; align-items: flex-start; margin-bottom: 2px;">
                     <svg viewBox="0 0 24 24" width="28" height="28" stroke="${tileColor}" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="margin-right:12px; min-width:28px"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
-                    <h3 style="margin-bottom: 0; color: var(--text-main); word-break: break-word; margin-top: 3px;">${escapeHtml(fName)}</h3>
+                    <h3 style="margin-bottom: 0; color: var(--text-main); word-break: break-word; margin-top: 3px;">${escapeHtml(folderDisplayName)}</h3>
                 </div>
                 ${tileSubtitle}
                 <div class="tile-progress-area">
@@ -1398,7 +1432,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const group = revealNavigationPath([...path, fName]);
                 group?.scrollIntoView({ behavior: preferredScrollBehavior(), block: 'center' });
             });
-            makeKeyboardAccessible(tile, () => tile.click(), `Open ${fName}, ${numVideos} lessons`);
+            makeKeyboardAccessible(tile, () => tile.click(), `Open ${folderDisplayName}, ${numVideos} lessons`);
             elements.courseGrid.appendChild(tile);
         }
         
@@ -1422,9 +1456,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 const watchedAgo = watchedAt ? timeAgo(watchedAt) : '';
                 tile.innerHTML = `
                     <div class="tile-action-row">
-                        <button type="button" class="tile-main-btn" aria-label="Play ${escapeHtml(video.title)}">
+                        <button type="button" class="tile-main-btn" aria-label="${lessonIsUnavailable(video) ? 'Open' : 'Play'} ${escapeHtml(video.title)}${lessonIsUnavailable(video) ? '; correct source unavailable' : ''}">
                             <svg viewBox="0 0 24 24" width="20" height="20" stroke="var(--text-muted)" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-                            <span class="video-tile-title">${escapeHtml(video.title)}</span>
+                            <span class="video-tile-title">${escapeHtml(video.title)}${lessonIsUnavailable(video) ? '<span class="lesson-status-badge">Source unavailable</span>' : ''}</span>
                         </button>
                         <button type="button" class="tile-star-btn${isFav ? ' tile-star-active' : ''}" data-path="${escapeHtml(video.path)}" title="${isFav ? 'Remove from favorites' : 'Add to favorites'}" aria-label="${isFav ? 'Remove from favorites' : 'Add to favorites'}: ${escapeHtml(video.title)}" aria-pressed="${isFav}">
                             <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="${isFav ? 'currentColor' : 'none'}" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
@@ -1543,6 +1577,15 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function renderVideoSummary(videoObj) {
+        if (lessonIsUnavailable(videoObj)) {
+            elements.videoSummary.innerHTML = `
+                <section class="lesson-availability-notice" role="alert">
+                    <h2>Why this lesson is unavailable</h2>
+                    <p>${escapeHtml(videoObj.availability_reason || 'The correct source video has not been recovered yet.')}</p>
+                </section>
+            `;
+            return;
+        }
         const courseLead = buildCourseSummaryLead(videoObj);
         elements.videoSummary.innerHTML = `${courseLead}<div class="summary-loading" role="status"><span class="summary-loading-dot" aria-hidden="true"></span>Loading lesson analysis…</div>`;
 
@@ -1633,9 +1676,10 @@ document.addEventListener('DOMContentLoaded', () => {
         // Update favorite star
         updateFavBtn();
 
-        // Show bookmarks
-        elements.bookmarksBar.style.display = 'block';
-        renderBookmarks();
+        // An unavailable source keeps its stable notes/favorite identity, but it cannot create timed bookmarks.
+        const unavailableLesson = lessonIsUnavailable(videoObj);
+        elements.bookmarksBar.style.display = unavailableLesson ? 'none' : 'block';
+        if (!unavailableLesson) renderBookmarks();
         
         // Generate breadcrumbs for video view: Folder1 / Folder2 / filename
         // Create a copy of pathParts because we need the raw path for rendering Home Tiles later
@@ -1674,7 +1718,7 @@ document.addEventListener('DOMContentLoaded', () => {
             crumb.style.color = 'var(--text-main)';
             crumb.style.textDecoration = 'none';
             crumb.style.transition = 'color 0.2s';
-            crumb.textContent = part;
+            crumb.textContent = displayBrowsePathSegment(part, index);
             elements.videoBreadcrumb.appendChild(crumb);
             breadcrumbCount += 1;
         });
@@ -1739,14 +1783,15 @@ document.addEventListener('DOMContentLoaded', () => {
             activeLink.querySelector('.video-link-main')?.setAttribute('aria-current', 'page');
         }
 
-        // Mark as watched
-        state.watched.add(videoObj.path);
-        safeStore('watchedVideos', JSON.stringify([...state.watched]));
-        if (activeLink) activeLink.classList.add('watched');
+        if (!unavailableLesson) {
+            // Mark only playable lessons as watched.
+            state.watched.add(videoObj.path);
+            safeStore('watchedVideos', JSON.stringify([...state.watched]));
+            if (activeLink) activeLink.classList.add('watched');
 
-        // Track last watched timestamp
-        state.lastWatched[videoObj.path] = Date.now();
-        safeStore('videoLastWatched', JSON.stringify(state.lastWatched));
+            state.lastWatched[videoObj.path] = Date.now();
+            safeStore('videoLastWatched', JSON.stringify(state.lastWatched));
+        }
         updateHomeStats();
         if (options.updateHistory !== false) setVideoRoute(videoObj.path);
 
@@ -1840,8 +1885,32 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    function lessonIsUnavailable(videoObj) {
+        return videoObj?.availability === 'unavailable';
+    }
+
+    function configureLessonMediaAvailability(videoObj) {
+        const unavailable = lessonIsUnavailable(videoObj);
+        elements.videoPlayer.hidden = unavailable;
+        elements.videoUnavailable.hidden = !unavailable;
+        elements.videoControlsBar.hidden = unavailable;
+        elements.addBookmarkBtn.disabled = unavailable;
+        elements.playerContainer.classList.toggle('has-unavailable-media', unavailable);
+        if (!unavailable) {
+            elements.videoUnavailableReason.textContent = '';
+            return true;
+        }
+
+        pauseVideoPlayback({ destroyStream: true, skipSave: true });
+        setPlaybackState('unavailable');
+        elements.videoUnavailableReason.textContent = videoObj.availability_reason
+            || 'This lesson is unavailable until its correct source video is recovered.';
+        return false;
+    }
+
     async function updateVideoSource(options = {}) {
         if (!state.currentVideo) return;
+        if (!configureLessonMediaAvailability(state.currentVideo)) return;
 
         const requestedVideo = state.currentVideo;
         const video = elements.videoPlayer;
@@ -2154,7 +2223,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function pauseVideoPlayback(options = {}) {
-        saveCurrentPosition();
+        if (!options.skipSave) saveCurrentPosition();
         playbackIntent = false;
         expectedResetPauses = 0;
         if (options.destroyStream) {
@@ -2443,7 +2512,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 let hasVisibleMatch = false;
                 
                 // Check header
-                const headerText = group.querySelector('.nav-header').innerText.toLowerCase();
+                const headerText = `${group.querySelector('.nav-header').innerText} ${group.dataset.searchText || ''}`.toLowerCase();
                 
                 // Check links
                 const links = group.querySelectorAll('.video-link');
@@ -2858,32 +2927,64 @@ document.addEventListener('DOMContentLoaded', () => {
     const scopeToggleWrap = document.getElementById('exp-scope-toggle-wrap');
     const exportScopeLabel = document.getElementById('export-scope-label');
     const exportModalTitle = document.getElementById('export-modal-title');
+    const scopeToggle = document.getElementById('exp-entire-library');
+
+    scopeToggle.addEventListener('change', () => {
+        if (exportContext !== 'video' || !state.currentVideo) return;
+        const summariesCheckbox = document.getElementById('exp-summaries');
+        const summariesLabel = document.getElementById('exp-summaries-label');
+        const bookmarksLabel = document.getElementById('exp-bookmarks-label');
+        if (scopeToggle.checked) {
+            exportScopeLabel.textContent = 'Exporting entire library:';
+            bookmarksLabel.textContent = 'All bookmarks & notes';
+            summariesLabel.textContent = 'All available video summaries';
+            summariesCheckbox.disabled = false;
+            summariesCheckbox.checked = true;
+            return;
+        }
+
+        const summaryUnavailable = lessonIsUnavailable(videoData[state.currentVideo.path]);
+        exportScopeLabel.textContent = 'Exporting for this video:';
+        bookmarksLabel.textContent = 'This video\'s bookmarks & notes';
+        summariesLabel.textContent = summaryUnavailable
+            ? 'Summary unavailable while the source is quarantined'
+            : 'This video\'s summary';
+        summariesCheckbox.disabled = summaryUnavailable;
+        summariesCheckbox.checked = !summaryUnavailable;
+    });
 
     document.querySelectorAll('.open-export-modal-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             pauseVideoPlayback();
             const onVideo = state.currentVideo && elements.videoView.style.display !== 'none';
             exportContext = onVideo ? 'video' : 'library';
+            const summariesCheckbox = document.getElementById('exp-summaries');
+            const summariesLabel = document.getElementById('exp-summaries-label');
 
             if (exportContext === 'video') {
+                const summaryUnavailable = lessonIsUnavailable(videoData[state.currentVideo.path]);
                 exportModalTitle.textContent = 'Export — ' + state.currentVideo.title;
                 exportScopeLabel.textContent = 'Exporting for this video:';
                 document.getElementById('exp-bookmarks-label').textContent = 'This video\'s bookmarks & notes';
-                document.getElementById('exp-summaries-label').textContent = 'This video\'s summary';
-                document.getElementById('exp-summaries').checked = true;
+                summariesLabel.textContent = summaryUnavailable
+                    ? 'Summary unavailable while the source is quarantined'
+                    : 'This video\'s summary';
+                summariesCheckbox.checked = !summaryUnavailable;
+                summariesCheckbox.disabled = summaryUnavailable;
                 document.getElementById('exp-favorites').checked = false;
                 document.getElementById('exp-watch-history').checked = false;
-                document.getElementById('exp-entire-library').checked = false;
+                scopeToggle.checked = false;
                 scopeToggleWrap.style.display = 'flex';
             } else {
                 exportModalTitle.textContent = 'Export / Import';
                 exportScopeLabel.textContent = 'Exporting entire library:';
                 document.getElementById('exp-bookmarks-label').textContent = 'All bookmarks & notes';
-                document.getElementById('exp-summaries-label').textContent = 'All video summaries';
-                document.getElementById('exp-summaries').checked = false;
+                summariesLabel.textContent = 'All available video summaries';
+                summariesCheckbox.checked = false;
+                summariesCheckbox.disabled = false;
                 document.getElementById('exp-favorites').checked = true;
                 document.getElementById('exp-watch-history').checked = false;
-                document.getElementById('exp-entire-library').checked = false;
+                scopeToggle.checked = false;
                 scopeToggleWrap.style.display = 'none';
             }
             document.getElementById('exp-bookmarks').checked = true;
@@ -2904,7 +3005,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const includeFavorites = document.getElementById('exp-favorites').checked;
         const includeSummaries = document.getElementById('exp-summaries').checked;
         const includeWatchHistory = document.getElementById('exp-watch-history').checked;
-        const expandToLibrary = document.getElementById('exp-entire-library').checked;
+        const expandToLibrary = scopeToggle.checked;
         const currentVideoOnly = exportContext === 'video' && !expandToLibrary;
         const format = document.querySelector('input[name="export-format"]:checked').value;
 
@@ -2915,8 +3016,13 @@ document.addEventListener('DOMContentLoaded', () => {
             exportButton.setAttribute('aria-busy', 'true');
             exportButton.textContent = currentVideoOnly ? 'Loading analysis…' : 'Loading all analyses…';
             try {
-                if (currentVideoOnly && state.currentVideo) await ensureSummaryForVideo(state.currentVideo);
-                else await ensureAllSummaries();
+                if (currentVideoOnly && state.currentVideo) {
+                    if (!lessonIsUnavailable(videoData[state.currentVideo.path])) {
+                        await ensureSummaryForVideo(state.currentVideo);
+                    }
+                } else {
+                    await ensureAllSummaries();
+                }
             } catch (error) {
                 console.warn('Could not prepare summaries for export:', error);
                 showToast('Summaries could not be loaded. Check your connection and try again.', 6000, true);
@@ -2954,11 +3060,13 @@ document.addEventListener('DOMContentLoaded', () => {
             if (includeSummaries) {
                 if (currentVideoOnly && state.currentVideo) {
                     const info = videoData[state.currentVideo.path];
-                    data.summaries = info ? { [state.currentVideo.path]: info.summary || '' } : {};
+                    data.summaries = info && !lessonIsUnavailable(info) && info.summary
+                        ? { [state.currentVideo.path]: info.summary }
+                        : {};
                 } else {
                     const summaries = {};
                     for (const [path, info] of Object.entries(videoData)) {
-                        if (info.summary) summaries[path] = info.summary;
+                        if (!lessonIsUnavailable(info) && info.summary) summaries[path] = info.summary;
                     }
                     data.summaries = summaries;
                 }
@@ -2987,7 +3095,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         const parts = fav.split('/');
                         parts.pop();
                         const title = titleForVideo(fav, videoData[fav]);
-                        md += `- **${title}** — _${parts.join(' / ')}_\n`;
+                        md += `- **${title}** — _${formatVideoFolderPath(parts)}_\n`;
                     }
                     md += '\n';
                 }
@@ -3016,7 +3124,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         const title = titleForVideo(videoPath, videoData[videoPath]);
 
                         md += `### ${title}\n`;
-                        md += `_${parts.join(' / ')}_\n\n`;
+                        md += `_${formatVideoFolderPath(parts)}_\n\n`;
 
                         for (const bk of bookmarks) {
                             const time = formatTime(bk.t);
@@ -3034,7 +3142,10 @@ document.addEventListener('DOMContentLoaded', () => {
             // Summaries
             if (includeSummaries) {
                 const pathsToExport = videoPaths || Object.keys(videoData);
-                const withSummaries = pathsToExport.filter(p => videoData[p] && videoData[p].summary);
+                const withSummaries = pathsToExport.filter(p => {
+                    const info = videoData[p];
+                    return info && !lessonIsUnavailable(info) && info.summary;
+                });
 
                 if (withSummaries.length > 0) {
                     md += '## Video Summaries\n\n';
@@ -3044,7 +3155,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         const title = titleForVideo(videoPath, videoData[videoPath]);
 
                         md += `### ${title}\n`;
-                        md += `_${parts.join(' / ')}_\n\n`;
+                        md += `_${formatVideoFolderPath(parts)}_\n\n`;
                         md += videoData[videoPath].summary + '\n\n';
                     }
                 }
@@ -3509,7 +3620,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const parts = videoPath.split('/');
         parts.pop();
         const title = titleForVideo(videoPath, info);
-        return { ...info, title, path: videoPath, folderPath: parts.join(' / ') };
+        return { ...info, title, path: videoPath, folderPath: formatVideoFolderPath(parts) };
     }
 
     // Track unfavorited items during this notes view session (soft delete)
@@ -3544,7 +3655,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!Array.isArray(arr) || arr.length === 0) return false;
             if (!sq) return true;
             // Match against video title, path, or note text
-            const searchStr = `${p} ${titleForVideo(p, videoData[p])}`.toLowerCase();
+            const searchStr = searchableVideoText(p, titleForVideo(p, videoData[p]));
             if (searchStr.includes(sq)) return true;
             return arr.some(bk => typeof bk === 'object' && bk.n && bk.n.toLowerCase().includes(sq));
         });
@@ -3856,12 +3967,13 @@ document.addEventListener('DOMContentLoaded', () => {
         for (const [path, info] of Object.entries(videoData)) {
             const parts = path.split('/');
             const title = titleForVideo(path, info);
-            const searchStr = (title + ' ' + parts.slice(0, -1).join(' ')).toLowerCase();
+            const folderParts = parts.slice(0, -1);
+            const searchStr = searchableVideoText(path, title);
 
             if (searchStr.includes(q)) {
                 const normalizedTitle = title.toLowerCase();
                 const score = normalizedTitle.startsWith(q) ? 0 : normalizedTitle.includes(q) ? 1 : 2;
-                matches.push({ title, path, folderPath: parts.slice(0, -1).join(' / '), info, score });
+                matches.push({ title, path, folderPath: formatVideoFolderPath(folderParts), info, score });
             }
         }
 
@@ -4018,7 +4130,7 @@ document.addEventListener('DOMContentLoaded', () => {
             .sort((a, b) => b.lastWatched - a.lastWatched);
 
         const filtered = sq
-            ? entries.filter(entry => `${entry.path} ${titleForVideo(entry.path, videoData[entry.path])}`.toLowerCase().includes(sq))
+            ? entries.filter(entry => searchableVideoText(entry.path, titleForVideo(entry.path, videoData[entry.path])).includes(sq))
             : entries;
 
         if (filtered.length === 0) {
@@ -4036,7 +4148,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const parts = entry.path.split('/');
             parts.pop();
             const title = titleForVideo(entry.path, info);
-            const folder = parts.join(' / ');
+            const folder = formatVideoFolderPath(parts);
             const ago = entry.lastWatched ? timeAgo(entry.lastWatched) : '';
             const resumeTime = positions[entry.path];
             const resumeStr = resumeTime ? formatTime(resumeTime) : '';
@@ -4137,7 +4249,7 @@ document.addEventListener('DOMContentLoaded', () => {
         for (const favPath of allFavPaths) {
             const videoObj = resolveVideoObj(favPath);
             if (!videoObj) continue;
-            if (sq && !favPath.toLowerCase().includes(sq) && !videoObj.title.toLowerCase().includes(sq)) continue;
+            if (sq && !searchableVideoText(favPath, videoObj.title).includes(sq)) continue;
             matchCount++;
 
             const isUnfavorited = favPendingUnfavs.has(favPath);
@@ -4272,7 +4384,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const parts = path.split('/');
                 parts.pop();
                 const title = titleForVideo(path, videoData[path]);
-                body += title + ' (' + parts.join(' / ') + ')\n';
+                body += title + ' (' + formatVideoFolderPath(parts) + ')\n';
                 for (const bk of withNotes) {
                     body += '  ' + formatTime(bk.t) + ' — ' + bk.n + '\n';
                 }
@@ -4295,7 +4407,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const parts = path.split('/');
                 parts.pop();
                 const title = titleForVideo(path, videoData[path]);
-                html += '<h2>' + escapeHtml(title) + ' <small style="color:#999;">' + escapeHtml(parts.join(' / ')) + '</small></h2>';
+                html += '<h2>' + escapeHtml(title) + ' <small style="color:#999;">' + escapeHtml(formatVideoFolderPath(parts)) + '</small></h2>';
                 for (const bk of bks) {
                     const noteText = bk.n ? ' — ' + bk.n : '';
                     html += '<p><span class="time">' + formatTime(bk.t) + '</span><span class="note">' + escapeHtml(noteText) + '</span></p>';

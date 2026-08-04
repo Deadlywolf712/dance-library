@@ -22,6 +22,7 @@ import com.deadlywolf.dancelibrary.model.CatalogTree
 import com.deadlywolf.dancelibrary.model.DanceCatalog
 import com.deadlywolf.dancelibrary.model.Lesson
 import com.deadlywolf.dancelibrary.model.ThemeSpec
+import com.deadlywolf.dancelibrary.model.isAvailable
 import com.deadlywolf.dancelibrary.model.matchesSearch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -53,8 +54,19 @@ data class PracticePlayerSession(
     val theaterMode: Boolean = false,
 )
 
-internal fun sessionForLesson(previous: PracticePlayerSession, lessonId: String): PracticePlayerSession =
-    previous.copy(lessonId = lessonId, loopStartMs = null, loopEndMs = null)
+internal fun sessionForLesson(
+    previous: PracticePlayerSession,
+    lessonId: String,
+    theaterModeAllowed: Boolean = true,
+): PracticePlayerSession = previous.copy(
+    lessonId = lessonId,
+    loopStartMs = null,
+    loopEndMs = null,
+    theaterMode = previous.theaterMode && theaterModeAllowed,
+)
+
+internal fun summaryForBackup(lesson: Lesson): String =
+    lesson.rawSummary.takeIf { lesson.isAvailable }.orEmpty()
 
 data class LibraryUiState(
     val loading: Boolean = true,
@@ -261,16 +273,18 @@ class LibraryViewModel(
             return
         }
 
+        val lesson = uiState.value.allLessons.firstOrNull { it.id == lessonId }
+        val playable = lesson?.isAvailable == true
         savedStateHandle[SELECTED_LESSON_KEY] = lessonId
-        savedStateHandle[PLAYBACK_INTENT_KEY] = true
-        if (sessionLessonId.value != lessonId) resetPlayerSession(lessonId)
-        if (startPositionMs != null) {
+        savedStateHandle[PLAYBACK_INTENT_KEY] = playable
+        if (sessionLessonId.value != lessonId) resetPlayerSession(lessonId, theaterModeAllowed = playable)
+        if (startPositionMs != null && playable) {
             savedStateHandle[SEEK_POSITION_KEY] = startPositionMs.coerceAtLeast(0L)
             savedStateHandle[SEEK_NONCE_KEY] = seekNonce.value + 1L
         } else {
             clearSeekRequest()
         }
-        viewModelScope.launch { practiceRepository.markOpened(lessonId) }
+        if (playable) viewModelScope.launch { practiceRepository.markOpened(lessonId) }
     }
 
     fun selectPreviousLesson() {
@@ -423,7 +437,7 @@ class LibraryViewModel(
         }
     }
 
-    private fun resetPlayerSession(lessonId: String) {
+    private fun resetPlayerSession(lessonId: String, theaterModeAllowed: Boolean) {
         val next = sessionForLesson(
             previous = PracticePlayerSession(
                 lessonId = sessionLessonId.value,
@@ -434,6 +448,7 @@ class LibraryViewModel(
                 theaterMode = sessionTheaterMode.value,
             ),
             lessonId = lessonId,
+            theaterModeAllowed = theaterModeAllowed,
         )
         savedStateHandle[SESSION_SPEED_KEY] = next.speed
         savedStateHandle[SESSION_MIRRORED_KEY] = next.mirrored
@@ -448,7 +463,7 @@ class LibraryViewModel(
     private fun backupCatalog(): PracticeBackupCatalog? = uiState.value.catalog?.lessons?.let { lessons ->
         PracticeBackupCatalog.from(
             references = lessons.map { lesson ->
-                BackupLessonReference(lesson.id, lesson.legacyPath, lesson.title, lesson.rawSummary)
+                BackupLessonReference(lesson.id, lesson.legacyPath, lesson.title, summaryForBackup(lesson))
             },
             knownThemeIds = uiState.value.catalog?.themes.orEmpty().mapTo(linkedSetOf()) { it.id },
         )

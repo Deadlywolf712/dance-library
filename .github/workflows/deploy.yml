@@ -7,6 +7,7 @@ on:
       - '.github/workflows/deploy.yml'
       - '.gitignore'
       - 'app.js'
+      - 'audit/full-content/**'
       - 'course-taxonomy.js'
       - 'data.js'
       - 'icon-*.png'
@@ -22,6 +23,7 @@ on:
       - 'scripts/stage-pages.mjs'
       - 'scripts/validate-pages-package.mjs'
       - 'scripts/validate-playback.mjs'
+      - 'scripts/validate-content-audit.mjs'
       - 'scripts/validate-site.mjs'
       - 'style.css'
       - 'summaries/**'
@@ -63,6 +65,7 @@ jobs:
           node --check sw.js
           node scripts/validate-site.mjs
           node scripts/validate-playback.mjs
+          node scripts/validate-content-audit.mjs
           npm run test:playback
           node scripts/validate-pages-package.mjs
       - name: Configure GitHub Pages

@@ -92,6 +92,12 @@ function parseCourseTaxonomy(source) {
       !Array.isArray(taxonomy.courseCategoryByFolder),
     'COURSE_TAXONOMY.courseCategoryByFolder must be an object.'
   );
+  assert(
+    taxonomy.courseDisplayNameByFolder &&
+      typeof taxonomy.courseDisplayNameByFolder === 'object' &&
+      !Array.isArray(taxonomy.courseDisplayNameByFolder),
+    'COURSE_TAXONOMY.courseDisplayNameByFolder must be an object.'
+  );
 
   const expectedCategoryTitles = CATEGORY_ORDER.map(category => category.title);
   assert(
@@ -105,6 +111,16 @@ function parseCourseTaxonomy(source) {
     assert(
       typeof categoryTitle === 'string' && allowedCategoryTitles.has(categoryTitle),
       `Taxonomy course ${courseFolder} has unsupported category title: ${categoryTitle}`
+    );
+  }
+  for (const [courseFolder, displayName] of Object.entries(taxonomy.courseDisplayNameByFolder)) {
+    assert(
+      typeof courseFolder === 'string' && courseFolder.trim() === courseFolder && courseFolder,
+      'Course display-name keys must be non-empty trimmed strings.'
+    );
+    assert(
+      typeof displayName === 'string' && displayName.trim() === displayName && displayName,
+      `Course display name must be a non-empty trimmed string: ${courseFolder}`
     );
   }
 
@@ -123,8 +139,14 @@ function buildCategoryIdByCourse(taxonomy, webEntries) {
   const taxonomyCourses = Object.keys(taxonomy.courseCategoryByFolder);
   const missingCourses = [...catalogCourses].filter(course => !Object.hasOwn(taxonomy.courseCategoryByFolder, course));
   const unexpectedCourses = taxonomyCourses.filter(course => !catalogCourses.has(course));
+  const unexpectedDisplayNames = Object.keys(taxonomy.courseDisplayNameByFolder)
+    .filter(course => !catalogCourses.has(course));
   assert(missingCourses.length === 0, `Course taxonomy is missing: ${missingCourses.join(', ')}`);
   assert(unexpectedCourses.length === 0, `Course taxonomy has unknown folders: ${unexpectedCourses.join(', ')}`);
+  assert(
+    unexpectedDisplayNames.length === 0,
+    `Course display-name aliases have unknown folders: ${unexpectedDisplayNames.join(', ')}`
+  );
   assert(
     taxonomyCourses.length === EXPECTED_CHUNKS,
     `Expected ${EXPECTED_CHUNKS} exact course taxonomy entries, found ${taxonomyCourses.length}.`
@@ -530,6 +552,7 @@ const themeStylesSource = readUtf8Strict(themeStylesPath);
 const themes = parseThemes(themeMarkupSource, themeStylesSource);
 const webEntries = Object.entries(webLessons);
 const categoryIdByCourse = buildCategoryIdByCourse(courseTaxonomy, webEntries);
+const displayNameForCourse = courseTitle => courseTaxonomy.courseDisplayNameByFolder[courseTitle] || courseTitle;
 
 assert(manifest.version === 1, `Unsupported summary manifest version: ${manifest.version}`);
 assert(webEntries.length === EXPECTED_LESSONS, `Expected ${EXPECTED_LESSONS} lessons, found ${webEntries.length}.`);
@@ -604,8 +627,20 @@ for (const [legacyPath, metadata] of webEntries) {
   const sourceDisplayTitle = optionalString(metadata.title, `${legacyPath}.title`);
   assert(!sourceDisplayTitle?.match(/[\r\n]/), `Lesson display title contains a line break: ${legacyPath}`);
   const displayTitle = sourceDisplayTitle ?? filename.replace(VIDEO_EXTENSION_RE, '');
+  const availability = metadata.availability === undefined
+    ? 'available'
+    : requiredString(metadata.availability, `${legacyPath}.availability`);
+  assert(['available', 'unavailable'].includes(availability), `Unsupported lesson availability: ${legacyPath}`);
+  const availabilityReason = metadata.availability_reason === undefined
+    ? null
+    : requiredString(metadata.availability_reason, `${legacyPath}.availability_reason`);
+  assert(
+    (availability === 'unavailable') === Boolean(availabilityReason),
+    `Lesson availability and reason disagree: ${legacyPath}`
+  );
   const directoryParts = pathParts.slice(0, -1);
   const courseTitle = directoryParts[0];
+  const courseDisplayName = displayNameForCourse(courseTitle);
   const breadcrumbs = directoryParts.slice(1);
   const categoryId = categoryIdByCourse.get(courseTitle);
   assert(categoryId, `Course is missing from the authoritative taxonomy: ${courseTitle}`);
@@ -623,6 +658,7 @@ for (const [legacyPath, metadata] of webEntries) {
   const existingCourse = courseMap.get(courseId);
   if (existingCourse) {
     assert(existingCourse.title === courseTitle, `Course ${courseId} maps to multiple top folders.`);
+    assert(existingCourse.displayName === courseDisplayName, `Course ${courseId} maps to multiple display names.`);
     assert(existingCourse.categoryId === categoryId, `Course ${courseId} maps to multiple categories.`);
     existingCourse.lessonCount += 1;
   } else {
@@ -631,6 +667,7 @@ for (const [legacyPath, metadata] of webEntries) {
       categoryId,
       rootFolderId: folderId([courseTitle]),
       title: courseTitle,
+      displayName: courseDisplayName,
       sortOrdinal: -1,
       lessonCount: 1,
       folderCount: -1
@@ -656,6 +693,7 @@ for (const [legacyPath, metadata] of webEntries) {
         categoryId,
         courseId,
         name: pathSegments.at(-1),
+        displayName: depth === 0 ? courseDisplayName : pathSegments.at(-1),
         pathSegments,
         sortOrdinal: -1,
         directLessonCount: 0,
@@ -679,10 +717,13 @@ for (const [legacyPath, metadata] of webEntries) {
     courseId,
     folderId: exactFolder.id,
     course: courseTitle,
+    courseDisplayName,
     breadcrumbs,
     playlistId: playlistId(courseId, breadcrumbs),
     filename,
     title: displayTitle,
+    availability,
+    availabilityReason,
     sortOrdinal: -1,
     catalogOrdinal: -1,
     bunnyId: metadata.bunny_id,
@@ -827,7 +868,7 @@ assert(chapterCount === 10441, `Expected 10441 parsed chapters, found ${chapterC
 assert(introParagraphCount === 13, `Expected 13 intro paragraphs, found ${introParagraphCount}.`);
 
 const exportDocument = {
-  schemaVersion: 2,
+  schemaVersion: 3,
   sourceSha256: inputHasher.digest('hex'),
   pullZoneHost,
   lessonCount: draftLessons.length,
@@ -852,7 +893,7 @@ fs.writeFileSync(outputPath, output, 'utf8');
 const written = readUtf8Strict(outputPath);
 assert(written === output, 'Generated catalog changed while being written.');
 const roundTrip = JSON.parse(written);
-assert(roundTrip.schemaVersion === 2, 'Generated catalog schema version changed during its JSON round trip.');
+assert(roundTrip.schemaVersion === 3, 'Generated catalog schema version changed during its JSON round trip.');
 assert(roundTrip.lessonCount === EXPECTED_LESSONS, 'Generated catalog failed its JSON round-trip validation.');
 assert(roundTrip.folders.length === EXPECTED_FOLDERS, 'Generated folders failed their JSON round-trip validation.');
 assert(roundTrip.themes.length === EXPECTED_THEMES, 'Generated themes failed their JSON round-trip validation.');

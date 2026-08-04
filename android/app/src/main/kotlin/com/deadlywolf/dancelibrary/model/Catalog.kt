@@ -66,6 +66,7 @@ data class CatalogCourse(
     val categoryId: String,
     val rootFolderId: String,
     val title: String,
+    val displayName: String,
     val sortOrdinal: Int,
     val lessonCount: Int,
     val folderCount: Int,
@@ -84,6 +85,7 @@ data class CatalogFolder(
     val categoryId: String,
     val courseId: String,
     val name: String,
+    val displayName: String,
     val pathSegments: List<String>,
     val sortOrdinal: Int,
     val directLessonCount: Int,
@@ -117,8 +119,11 @@ data class Lesson(
     val folderId: String,
     val breadcrumbs: List<String>,
     val course: String,
+    val courseDisplayName: String,
     val playlistId: String,
     val title: String,
+    val availability: String,
+    val availabilityReason: String?,
     val sortOrdinal: Int,
     val catalogOrdinal: Int,
     val bunnyId: String,
@@ -130,6 +135,9 @@ data class Lesson(
 
 val Lesson.category: String
     get() = categoryTitle
+
+val Lesson.isAvailable: Boolean
+    get() = availability == "available"
 
 data class LessonChapter(
     val seconds: Long,
@@ -148,6 +156,8 @@ fun Lesson.matchesSearch(query: String): Boolean {
         append(title)
         append(' ')
         append(course)
+        append(' ')
+        append(courseDisplayName)
         append(' ')
         append(category)
         append(' ')

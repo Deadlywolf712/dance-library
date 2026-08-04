@@ -111,6 +111,59 @@ if (JSON.stringify(mappedCourseFolders) !== JSON.stringify(courseFolders)) {
   const unexpected = mappedCourseFolders.filter(courseFolder => !courseFolders.includes(courseFolder));
   fail(`Course taxonomy mismatch. Missing: ${missing.join(', ') || 'none'}. Unexpected: ${unexpected.join(', ') || 'none'}.`);
 }
+const expectedCourseDisplayNames = {
+  'Adolfo Indacochea  Tania Cannarsa - Salsa On2 Advanced': 'Adolfo Indacochea & Tania Cannarsa - Salsa On2 Advanced',
+  'Adolfo Indacochea  Tania Cannarsa - Salsa On2 Beginner': 'Adolfo Indacochea & Tania Cannarsa - Salsa On2 Beginner',
+  'Adolfo Indacochea  Tania Cannarsa - Salsa On2 Intermediate': 'Adolfo Indacochea & Tania Cannarsa - Salsa On2 Intermediate',
+  'Fernando Sosa  Tatiana Bonaguro - Sosa Style Advanced': 'Fernando Sosa & Tatiana Bonaguro - Sosa Style Advanced',
+  'Fernando Sosa  Tatiana Bonaguro - Sosa Style Beginner': 'Fernando Sosa & Tatiana Bonaguro - Sosa Style Beginner',
+  'Fernando Sosa  Tatiana Bonaguro - Sosa Style Intermediate': 'Fernando Sosa & Tatiana Bonaguro - Sosa Style Intermediate',
+  'Fernando Sosa  Tatiana Bonaguro - Sosa Style On 2': 'Fernando Sosa & Tatiana Bonaguro - Sosa Style On 2',
+  'Fernando Sosa  Tatiana Bonaguro - Sosa Style Upgrade': 'Fernando Sosa & Tatiana Bonaguro - Sosa Style Upgrade',
+  'Alex  Desirée - Advanced': 'Alex & Desirée — Advanced',
+  'Alex  Desirée - Beginner': 'Alex & Desirée — Beginner',
+  'Alex  Desirée - Intermediate': 'Alex & Desirée — Intermediate',
+  'Kike  Nahir - Kike  Nahir Combinations': 'Kike & Nahir — Bachata Sensual Combinations',
+  'Korke  Judith - Advanced': 'Korke & Judith — Advanced',
+  'Korke  Judith - Bachata Sensual 2025 New Techniques and Cadences': 'Korke & Judith — Bachata Sensual 2025: New Techniques and Cadences (Intermediate/Advanced)',
+  'Korke  Judith - BeginnerIntermediate': 'Korke & Judith — Beginner/Intermediate',
+  'Korke  Judith - Fundamentals of Bachata Sensual': 'Korke & Judith — Fundamentals of Bachata Sensual (Beginner)',
+  'Korke  Judith - Intermediate  Advanced': 'Korke & Judith — Intermediate/Advanced',
+  'Marco Espejo - Marco Espejo Style': 'Marco Espejo — Marco Espejo Style (Open Level)',
+  'Pablo  Raquel - Advanced': 'Pablo & Raquel — Advanced',
+  'Pablo  Raquel - Intermediate': 'Pablo & Raquel — Intermediate/Advanced',
+  'Pablo  Raquel - IntermediateAdvanced': 'Pablo & Raquel — Smooth Bachata Intermediate/Advanced',
+  'Arthur  Oksana - Zouk Advanced': 'Arthur & Oksana — Zouk Advanced',
+  'Arthur  Oksana - Zouk Beginner': 'Arthur & Oksana — Zouk Beginner',
+  'Arthur  Oksana - Zouk Beginner-Intermediate': 'Arthur & Oksana — Zouk Beginner–Intermediate',
+  'Arthur  Oksana - Zouk Intermediate': 'Arthur & Oksana — Zouk Intermediate',
+  'Arthur  Oksana - Zouk Intermediate-Advanced': 'Arthur & Oksana — Zouk Intermediate–Advanced',
+  'Isabelle  Felicien - Advanced': 'Isabelle & Felicien — Kizomba Advanced',
+  'Isabelle  Felicien - Beginner': 'Isabelle & Felicien — Kizomba Beginner',
+  'Isabelle  Felicien - Intermediate': 'Isabelle & Felicien — Kizomba Intermediate'
+};
+const courseDisplayNames = taxonomy.courseDisplayNameByFolder;
+if (!courseDisplayNames || typeof courseDisplayNames !== 'object' || Array.isArray(courseDisplayNames)) {
+  fail('Course taxonomy display-name aliases must be an object.');
+}
+const courseDisplayNameEntries = Object.entries(courseDisplayNames);
+if (courseDisplayNameEntries.length !== Object.keys(expectedCourseDisplayNames).length) {
+  fail(`Expected exactly ${Object.keys(expectedCourseDisplayNames).length} course display-name aliases.`);
+}
+for (const [courseFolder, displayName] of courseDisplayNameEntries) {
+  if (!courseFolders.includes(courseFolder)) fail(`Course display-name alias has an unknown folder: ${courseFolder}.`);
+  if (typeof displayName !== 'string' || !displayName.trim() || displayName.trim() !== displayName) {
+    fail(`Course display-name alias must be a non-empty trimmed string: ${courseFolder}.`);
+  }
+  if (expectedCourseDisplayNames[courseFolder] !== displayName) {
+    fail(`Course display-name alias is not source-confirmed: ${courseFolder}.`);
+  }
+}
+for (const [courseFolder, displayName] of Object.entries(expectedCourseDisplayNames)) {
+  if (courseDisplayNames[courseFolder] !== displayName) {
+    fail(`Course display-name alias is missing or incorrect: ${courseFolder}.`);
+  }
+}
 if (new Set(categoryOrder).size !== categoryOrder.length || categoryOrder.at(-1) !== 'Other') {
   fail('Course taxonomy category order must contain unique categories and finish with Other.');
 }
@@ -159,7 +212,20 @@ for (const lessonPath of lessonPaths) {
   if (Object.hasOwn(info, 'title') && (typeof info.title !== 'string' || !info.title.trim())) {
     fail(`Lesson title override must be a non-empty string: ${lessonPath}`);
   }
+  if (Object.hasOwn(info, 'availability')) {
+    if (info.availability !== 'unavailable') fail(`Unknown lesson availability state: ${lessonPath}`);
+    if (typeof info.availability_reason !== 'string' || !info.availability_reason.trim()) {
+      fail(`Unavailable lesson is missing a reason: ${lessonPath}`);
+    }
+  } else if (Object.hasOwn(info, 'availability_reason')) {
+    fail(`Available lesson unexpectedly has an availability reason: ${lessonPath}`);
+  }
   if (!summaries.has(lessonPath)) fail(`Lesson is missing its lazy summary: ${lessonPath}`);
+}
+const unavailableLessons = lessonPaths.filter(lessonPath => catalog[lessonPath].availability === 'unavailable');
+const expectedUnavailableLesson = 'Salsa Masterclass/Week 3/Spot Overturn/Spot Overturn - Explanation On2.mp4';
+if (unavailableLessons.length !== 1 || unavailableLessons[0] !== expectedUnavailableLesson) {
+  fail(`Unexpected unavailable-lesson set: ${unavailableLessons.join(', ') || 'none'}.`);
 }
 
 const sw = read('sw.js');

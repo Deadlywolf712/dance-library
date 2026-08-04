@@ -38,6 +38,18 @@ class CatalogTest {
     }
 
     @Test
+    fun searchIncludesCourseDisplayNameWithoutChangingStableCourse() {
+        val stableCourse = "Arthur  Oksana - Zouk Beginner"
+        val lesson = lesson(
+            course = stableCourse,
+            courseDisplayName = "Arthur & Oksana — Zouk Beginner",
+        )
+
+        assertEquals(stableCourse, lesson.course)
+        assertTrue(lesson.matchesSearch("Arthur & Oksana"))
+    }
+
+    @Test
     fun validatorRejectsDuplicateBunnyIds() {
         val duplicate = lesson()
         val catalog = simpleCatalog(listOf(duplicate, duplicate))
@@ -64,6 +76,15 @@ class CatalogTest {
     }
 
     @Test
+    fun validatorRequiresAReasonForUnavailableMedia() {
+        val catalog = simpleCatalog(listOf(lesson(availability = "unavailable")))
+
+        assertThrows(IllegalArgumentException::class.java) {
+            CatalogValidator.requireValid(catalog)
+        }
+    }
+
+    @Test
     fun generatedCatalogHasCompleteWebsiteHierarchyAndThemes() {
         val asset = sequenceOf(
             File("src/main/assets/catalog.json"),
@@ -74,7 +95,7 @@ class CatalogTest {
         val catalog = Gson().fromJson(requireNotNull(asset).readText(Charsets.UTF_8), DanceCatalog::class.java)
 
         CatalogValidator.requireValid(catalog)
-        assertEquals(2, catalog.schemaVersion)
+        assertEquals(3, catalog.schemaVersion)
         assertEquals(795, catalog.lessons.size)
         assertEquals(6, catalog.categories.size)
         assertEquals(34, catalog.courses.size)
@@ -86,6 +107,33 @@ class CatalogTest {
         assertEquals(6, catalog.folders.count { it.presentation?.kind == "week" })
         assertEquals(47, catalog.folders.count { it.presentation?.kind == "lesson-group" })
         assertEquals("Multiply Your Moves", catalog.courses.single { it.title == "Salsa Masterclass" }.presentation?.title)
+
+        fun assertStableCourseAlias(stableName: String, displayName: String) {
+            val course = catalog.courses.single { it.title == stableName }
+            val rootFolder = catalog.folders.single { it.id == course.rootFolderId }
+            val lessons = catalog.lessons.filter { it.courseId == course.id }
+
+            assertEquals(displayName, course.displayName)
+            assertEquals(stableName, rootFolder.name)
+            assertEquals(listOf(stableName), rootFolder.pathSegments)
+            assertEquals(displayName, rootFolder.displayName)
+            assertTrue(lessons.isNotEmpty())
+            assertTrue(lessons.all { it.course == stableName && it.courseDisplayName == displayName })
+            assertTrue(lessons.all { it.legacyPath.startsWith("$stableName/") })
+        }
+
+        assertStableCourseAlias(
+            "Arthur  Oksana - Zouk Beginner",
+            "Arthur & Oksana — Zouk Beginner",
+        )
+        assertStableCourseAlias(
+            "Isabelle  Felicien - Beginner",
+            "Isabelle & Felicien — Kizomba Beginner",
+        )
+        assertStableCourseAlias(
+            "Pablo  Raquel - Intermediate",
+            "Pablo & Raquel — Intermediate/Advanced",
+        )
 
         val carolinaRosaLessons = catalog.lessons.filter { it.course.startsWith("Carolina Rosa") }
         assertEquals(30, carolinaRosaLessons.size)
@@ -104,6 +152,14 @@ class CatalogTest {
         val correctedThreeByThreeLesson = catalog.lessons.single { it.bunnyId == "091ce8f2-de17-4eda-a1a1-bb62d048926b" }
         assertEquals("09 - 3X3 Steps", correctedThreeByThreeLesson.title)
         assertEquals("Carolina Rosa - Advanced/09 - 33 Steps.mp4", correctedThreeByThreeLesson.legacyPath)
+
+        val unavailableLessons = catalog.lessons.filterNot(Lesson::isAvailable)
+        assertEquals(1, unavailableLessons.size)
+        assertEquals(
+            "Salsa Masterclass/Week 3/Spot Overturn/Spot Overturn - Explanation On2.mp4",
+            unavailableLessons.single().legacyPath,
+        )
+        assertTrue(unavailableLessons.single().availabilityReason.orEmpty().contains("exact duplicate"))
     }
 
     @Test
@@ -147,6 +203,10 @@ class CatalogTest {
         assertEquals(listOf(TEST_CATEGORY_ID), tree.rootNodes.map(BrowseNode::id))
         assertEquals(listOf(ROOT_FOLDER_ID), tree.nodesAt(BrowseLocation.Category(TEST_CATEGORY_ID)).map(BrowseNode::id))
         assertEquals(
+            listOf(TEST_COURSE_DISPLAY_NAME),
+            tree.nodesAt(BrowseLocation.Category(TEST_CATEGORY_ID)).map(BrowseNode::title),
+        )
+        assertEquals(
             listOf(CHILD_FOLDER_ID, direct.id),
             tree.nodesAt(BrowseLocation.Folder(ROOT_FOLDER_ID)).map(BrowseNode::id),
         )
@@ -159,6 +219,7 @@ internal fun lesson(
     id: String = "9b0a1d6a-da85-4a75-92f8-8cc8d62abe96",
     title: String = "01 - Syncopation",
     course: String = TEST_COURSE_TITLE,
+    courseDisplayName: String = if (course == TEST_COURSE_TITLE) TEST_COURSE_DISPLAY_NAME else course,
     categoryId: String = TEST_CATEGORY_ID,
     categoryTitle: String = when (categoryId) {
         "bachata" -> "Bachata"
@@ -172,9 +233,12 @@ internal fun lesson(
     folderId: String = ROOT_FOLDER_ID,
     breadcrumbs: List<String> = emptyList(),
     playlistId: String = "playlist-root",
+    availability: String = "available",
+    availabilityReason: String? = null,
     catalogOrdinal: Int = 0,
     sortOrdinal: Int = 0,
     chapters: List<LessonChapter> = emptyList(),
+    rawSummary: String = "",
 ): Lesson = Lesson(
     id = id,
     legacyPath = (listOf(course) + breadcrumbs + "$title.mp4").joinToString("/"),
@@ -184,13 +248,16 @@ internal fun lesson(
     folderId = folderId,
     breadcrumbs = breadcrumbs,
     course = course,
+    courseDisplayName = courseDisplayName,
     playlistId = playlistId,
     title = title,
+    availability = availability,
+    availabilityReason = availabilityReason,
     sortOrdinal = sortOrdinal,
     catalogOrdinal = catalogOrdinal,
     bunnyId = id,
     collectionId = "30595781-8972-4091-8b85-acba26bde7e3",
-    rawSummary = "",
+    rawSummary = rawSummary,
     introParagraphs = emptyList(),
     chapters = chapters,
 )
@@ -209,7 +276,7 @@ private fun catalogFixture(
     lessons: List<Lesson>,
     folders: List<CatalogFolder>,
 ): DanceCatalog = DanceCatalog(
-    schemaVersion = 2,
+    schemaVersion = 3,
     sourceSha256 = "a".repeat(64),
     pullZoneHost = "vz-example.b-cdn.net",
     lessonCount = lessons.size,
@@ -234,6 +301,7 @@ private fun catalogFixture(
             categoryId = TEST_CATEGORY_ID,
             rootFolderId = ROOT_FOLDER_ID,
             title = TEST_COURSE_TITLE,
+            displayName = TEST_COURSE_DISPLAY_NAME,
             sortOrdinal = 0,
             lessonCount = lessons.size,
             folderCount = folders.size,
@@ -248,6 +316,7 @@ private fun testFolder(
     id: String = ROOT_FOLDER_ID,
     parentId: String? = null,
     pathSegments: List<String> = listOf(TEST_COURSE_TITLE),
+    displayName: String = if (parentId == null) TEST_COURSE_DISPLAY_NAME else pathSegments.last(),
     directLessonCount: Int = 1,
     lessonCount: Int = 1,
     childFolderCount: Int = 0,
@@ -257,6 +326,7 @@ private fun testFolder(
     categoryId = TEST_CATEGORY_ID,
     courseId = TEST_COURSE_ID,
     name = pathSegments.last(),
+    displayName = displayName,
     pathSegments = pathSegments,
     sortOrdinal = 0,
     directLessonCount = directLessonCount,
@@ -277,5 +347,6 @@ private fun testThemes(): List<ThemeSpec> = List(103) { index ->
 private const val TEST_CATEGORY_ID = "salsa"
 private const val TEST_COURSE_ID = "test-course"
 private const val TEST_COURSE_TITLE = "Test Salsa Course"
+private const val TEST_COURSE_DISPLAY_NAME = "Test Salsa Course Display"
 private const val ROOT_FOLDER_ID = "folder-root"
 private const val CHILD_FOLDER_ID = "folder-child"

@@ -2,6 +2,8 @@
 
 Audit date: 2026-08-02
 
+> This static-metadata audit is retained as the first correction pass. The later 795-video perceptual and Bunny-delivery audit in `audit/full-content/catalog-content-audit.md` supersedes its visual-evidence boundary and records all subsequent corrections.
+
 ## Result
 
 The catalog contains 795 lessons across 34 courses. The media mappings are intact, but the audit confirmed two source-data problems:
@@ -83,4 +85,4 @@ The machine-readable static result is in `audit/catalog-accuracy-static-report.j
 
 ## Evidence boundary
 
-Exact paths, unique Bunny IDs, playlist availability, matching durations, summaries, and source metadata provide strong catalog-wide mapping evidence. Duration equality alone is not perceptual proof that every frame of the remaining 765 non-Carolina lessons is the intended content. The audit makes no broader visual-identity claim for those lessons. No media was renamed, deleted, moved, or uploaded during this audit.
+The first pass did not perceptually verify the 765 non-Carolina lessons. That limitation was subsequently closed with direct per-video source inspection, 795/795 Bunny/offline frame-sequence alignment, and a 795-video cross-catalog duplicate scan. See `audit/full-content/catalog-content-audit.md` for the current result, including the quarantined Spot Overturn duplicate and all display corrections. No stable media path or Bunny ID was renamed during either audit.

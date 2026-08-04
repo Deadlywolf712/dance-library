@@ -51,6 +51,7 @@ import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
@@ -94,6 +95,7 @@ import com.deadlywolf.dancelibrary.data.MAX_IMPORTED_NOTE_LENGTH
 import com.deadlywolf.dancelibrary.model.FolderPresentation
 import com.deadlywolf.dancelibrary.model.Lesson
 import com.deadlywolf.dancelibrary.model.LessonChapter
+import com.deadlywolf.dancelibrary.model.isAvailable
 import kotlin.math.min
 
 @Composable
@@ -239,38 +241,43 @@ internal fun LessonDetailScreen(
             if (!playerState.theaterMode) {
                 LessonTopBar(lesson, favorite, compact, context, viewModel)
             }
-            HlsVideoPlayer(
-                lesson = lesson,
-                pullZone = state.pullZone,
-                resumePositionMs = state.practice.positionsMs[lesson.id] ?: 0L,
-                initialSeekPositionMs = state.seekRequest?.positionMs,
-                playWhenReady = state.playWhenReady,
-                onProgress = viewModel::savePlayback,
-                onPlaybackIntentChanged = viewModel::setPlaybackIntent,
-                onPlayerChanged = {},
-                onPracticeControllerChanged = { controller = it },
-                modifier = if (playerState.theaterMode) {
-                    Modifier.fillMaxWidth().weight(1f)
-                } else {
-                    Modifier.fillMaxWidth().height(videoHeight)
-                },
-            )
-            PracticeToolbar(
-                playerState = playerState,
-                controller = controller,
-                onBookmark = { bookmarkPositionMs = playerState.positionMs },
-                previousEnabled = state.previousLesson != null,
-                nextEnabled = state.nextLesson != null,
-                onPrevious = viewModel::selectPreviousLesson,
-                onNext = viewModel::selectNextLesson,
-                singleLine = useSingleLineControls,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .then(
-                        if (playerState.theaterMode) Modifier.background(Color.Black.copy(alpha = 0.72f))
-                        else Modifier,
-                    ),
-            )
+            val mediaModifier = if (playerState.theaterMode) {
+                Modifier.fillMaxWidth().weight(1f)
+            } else {
+                Modifier.fillMaxWidth().height(videoHeight)
+            }
+            if (lesson.isAvailable) {
+                HlsVideoPlayer(
+                    lesson = lesson,
+                    pullZone = state.pullZone,
+                    resumePositionMs = state.practice.positionsMs[lesson.id] ?: 0L,
+                    initialSeekPositionMs = state.seekRequest?.positionMs,
+                    playWhenReady = state.playWhenReady,
+                    onProgress = viewModel::savePlayback,
+                    onPlaybackIntentChanged = viewModel::setPlaybackIntent,
+                    onPlayerChanged = {},
+                    onPracticeControllerChanged = { controller = it },
+                    modifier = mediaModifier,
+                )
+                PracticeToolbar(
+                    playerState = playerState,
+                    controller = controller,
+                    onBookmark = { bookmarkPositionMs = playerState.positionMs },
+                    previousEnabled = state.previousLesson != null,
+                    nextEnabled = state.nextLesson != null,
+                    onPrevious = viewModel::selectPreviousLesson,
+                    onNext = viewModel::selectNextLesson,
+                    singleLine = useSingleLineControls,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .then(
+                            if (playerState.theaterMode) Modifier.background(Color.Black.copy(alpha = 0.72f))
+                            else Modifier,
+                        ),
+                )
+            } else {
+                UnavailableLessonMedia(lesson = lesson, modifier = mediaModifier)
+            }
             if (!playerState.theaterMode) {
                 LazyColumn(
                     contentPadding = PaddingValues(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 28.dp),
@@ -281,59 +288,88 @@ internal fun LessonDetailScreen(
                         LessonOverview(
                             lesson = lesson,
                             watched = watched,
-                            chapterCount = lesson.chapters.size,
+                            chapterCount = if (lesson.isAvailable) lesson.chapters.size else 0,
                             bookmarkCount = bookmarks.size,
                             onToggleWatched = { viewModel.setWatched(lesson.id, !watched) },
                         )
                     }
-                    folderPresentation?.let { presentation -> item { LessonFolderPresentation(presentation) } }
-                    if (lesson.introParagraphs.isNotEmpty()) {
-                        item {
-                            Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(16.dp)) {
-                                Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                                    lesson.introParagraphs.forEach { Text(it, style = MaterialTheme.typography.bodyLarge) }
+                    if (lesson.isAvailable) {
+                        folderPresentation?.let { presentation -> item { LessonFolderPresentation(presentation) } }
+                        if (lesson.introParagraphs.isNotEmpty()) {
+                            item {
+                                Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(16.dp)) {
+                                    Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                                        lesson.introParagraphs.forEach { Text(it, style = MaterialTheme.typography.bodyLarge) }
+                                    }
                                 }
                             }
                         }
-                    }
-                    item {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Bookmarks & notes", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-                            FilledTonalButton(onClick = { bookmarkPositionMs = playerState.positionMs }, enabled = controller != null) {
-                                Icon(Icons.Rounded.BookmarkAdd, contentDescription = null)
-                                Spacer(Modifier.width(6.dp))
-                                Text("Add")
+                        item {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("Bookmarks & notes", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                                FilledTonalButton(onClick = { bookmarkPositionMs = playerState.positionMs }, enabled = controller != null) {
+                                    Icon(Icons.Rounded.BookmarkAdd, contentDescription = null)
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Add")
+                                }
                             }
                         }
-                    }
-                    if (bookmarks.isEmpty()) {
-                        item { Text("No bookmarks yet. Add one while the video is at the move you want to revisit.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                    } else {
-                        items(bookmarks, key = PracticeBookmark::id) { bookmark ->
-                            BookmarkCard(
-                                bookmark = bookmark,
-                                onOpen = {
-                                    controller?.seekTo(bookmark.positionMs)
+                        if (bookmarks.isEmpty()) {
+                            item { Text("No bookmarks yet. Add one while the video is at the move you want to revisit.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        } else {
+                            items(bookmarks, key = PracticeBookmark::id) { bookmark ->
+                                BookmarkCard(
+                                    bookmark = bookmark,
+                                    onOpen = {
+                                        controller?.seekTo(bookmark.positionMs)
+                                        controller?.play()
+                                    },
+                                    onEdit = { editingBookmarkId = bookmark.id },
+                                    onDelete = { viewModel.deleteBookmark(lesson.id, bookmark.id) },
+                                )
+                            }
+                        }
+                        item { Text("Lesson chapters", style = MaterialTheme.typography.titleLarge) }
+                        if (lesson.chapters.isEmpty()) {
+                            item {
+                                Text(
+                                    cleanMarkdown(lesson.rawSummary).ifBlank { "No chapter notes are available for this lesson yet." },
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        } else {
+                            itemsIndexed(lesson.chapters, key = { index, chapter -> "${chapter.seconds}-$index" }) { _, chapter ->
+                                ChapterCard(chapter) {
+                                    controller?.seekTo(chapter.seconds * 1_000L)
                                     controller?.play()
-                                },
-                                onEdit = { editingBookmarkId = bookmark.id },
-                                onDelete = { viewModel.deleteBookmark(lesson.id, bookmark.id) },
-                            )
-                        }
-                    }
-                    item { Text("Lesson chapters", style = MaterialTheme.typography.titleLarge) }
-                    if (lesson.chapters.isEmpty()) {
-                        item {
-                            Text(
-                                cleanMarkdown(lesson.rawSummary).ifBlank { "No chapter notes are available for this lesson yet." },
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
+                                }
+                            }
                         }
                     } else {
-                        itemsIndexed(lesson.chapters, key = { index, chapter -> "${chapter.seconds}-$index" }) { _, chapter ->
-                            ChapterCard(chapter) {
-                                controller?.seekTo(chapter.seconds * 1_000L)
-                                controller?.play()
+                        item {
+                            Surface(color = MaterialTheme.colorScheme.errorContainer, shape = RoundedCornerShape(16.dp)) {
+                                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                                    Text("Media quarantined", style = MaterialTheme.typography.titleLarge)
+                                    Text(
+                                        lesson.availabilityReason ?: "The correct source video has not been recovered.",
+                                        color = MaterialTheme.colorScheme.onErrorContainer,
+                                    )
+                                    Text(
+                                        "The lesson ID is preserved so favorites and existing notes remain compatible.",
+                                        color = MaterialTheme.colorScheme.onErrorContainer,
+                                    )
+                                }
+                            }
+                        }
+                        if (bookmarks.isNotEmpty()) {
+                            item { Text("Saved notes", style = MaterialTheme.typography.titleLarge) }
+                            items(bookmarks, key = PracticeBookmark::id) { bookmark ->
+                                BookmarkCard(
+                                    bookmark = bookmark,
+                                    onOpen = {},
+                                    onEdit = { editingBookmarkId = bookmark.id },
+                                    onDelete = { viewModel.deleteBookmark(lesson.id, bookmark.id) },
+                                )
                             }
                         }
                     }
@@ -534,6 +570,31 @@ private fun PracticeToolbar(
                 .padding(horizontal = 7.dp, vertical = 4.dp),
         ) {
             controls()
+        }
+    }
+}
+
+@Composable
+private fun UnavailableLessonMedia(lesson: Lesson, modifier: Modifier = Modifier) {
+    Surface(
+        color = MaterialTheme.colorScheme.errorContainer,
+        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+        modifier = modifier,
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier.fillMaxSize().padding(24.dp),
+        ) {
+            Icon(Icons.Rounded.WarningAmber, contentDescription = null, modifier = Modifier.size(42.dp))
+            Spacer(Modifier.height(10.dp))
+            Text("Correct source unavailable", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(7.dp))
+            Text(
+                lesson.availabilityReason ?: "This lesson will return when its correct source video is recovered.",
+                style = MaterialTheme.typography.bodyLarge,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            )
         }
     }
 }

@@ -57,6 +57,25 @@ class LibraryFilterTest {
     }
 
     @Test
+    fun unavailableLessonClearsInheritedTheaterModeAndDuplicateSummary() {
+        val previous = PracticePlayerSession(
+            lessonId = "lesson-a",
+            speed = 0.75f,
+            mirrored = true,
+            theaterMode = true,
+        )
+        val next = sessionForLesson(previous, "lesson-b", theaterModeAllowed = false)
+        val unavailable = lesson(
+            availability = "unavailable",
+            availabilityReason = "Duplicate source",
+            rawSummary = "Incorrect duplicate analysis",
+        )
+
+        assertEquals(false, next.theaterMode)
+        assertEquals("", summaryForBackup(unavailable))
+    }
+
+    @Test
     fun transientPlaybackKeepsExactResumeAcrossPlayerRecreation() {
         val positions = updateTransientPlaybackPosition(
             positions = emptyMap(),

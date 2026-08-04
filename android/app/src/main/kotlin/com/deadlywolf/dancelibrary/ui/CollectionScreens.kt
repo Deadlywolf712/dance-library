@@ -448,11 +448,11 @@ private fun EmptyCollection(title: String, subtitle: String) {
 
 private fun Lesson.matchesCollectionQuery(query: String): Boolean {
     if (query.isBlank()) return true
-    val haystack = listOf(title, course, breadcrumbs.joinToString(" "), legacyPath).joinToString(" ")
+    val haystack = listOf(title, course, courseDisplayName, breadcrumbs.joinToString(" "), legacyPath).joinToString(" ")
     return query.trim().split(Regex("\\s+")).all { term -> haystack.contains(term, ignoreCase = true) }
 }
 
-internal fun Lesson.fullFolderLabel(): String = (listOf(course) + breadcrumbs)
+internal fun Lesson.fullFolderLabel(): String = (listOf(courseDisplayName) + breadcrumbs)
     .filter(String::isNotBlank)
     .joinToString(" › ")
 

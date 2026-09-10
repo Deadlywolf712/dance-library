@@ -273,7 +273,7 @@ test('long course names remain readable without horizontal overflow on a 320px p
   await browse(page, { mobile: true });
   await page.locator('#course-browser-search').fill('Korke cadences');
   await expect(rows(page)).toHaveCount(1);
-  await expect(rows(page).first()).toContainText('Bachata Sensual 2025 New Techniques and Cadences');
+  await expect(rows(page).first()).toContainText('Bachata Sensual 2025: New Techniques and Cadences');
   await expect(rows(page).first()).toBeInViewport();
   const sizing = await page.evaluate(() => {
     const selectors = ['#course-browser-modal', '.course-browser-panel', '#course-browser-results', '.course-browser-row'];

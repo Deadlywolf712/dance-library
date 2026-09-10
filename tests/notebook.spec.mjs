@@ -109,6 +109,7 @@ test('an unfinished note survives closing the notebook and reloading the page', 
   await noteRow(page).locator('.notes-item-edit').click();
   await expect(noteRow(page).locator('textarea')).toHaveValue(draft);
   await noteRow(page).getByRole('button', { name: 'Save note', exact: true }).click();
+  await expect(noteRow(page).locator('textarea')).toHaveCount(0);
   expect((await readBookmarks(page))[LESSON_A][0].n).toBe(draft);
 });
 

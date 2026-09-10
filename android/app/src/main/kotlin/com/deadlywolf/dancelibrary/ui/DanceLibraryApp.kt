@@ -4,6 +4,8 @@ import android.view.KeyEvent as AndroidKeyEvent
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -30,6 +32,7 @@ import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.MenuBook
 import androidx.compose.material.icons.rounded.NoteAlt
+import androidx.compose.material.icons.rounded.PlaylistPlay
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Button
@@ -187,6 +190,17 @@ private fun AdaptiveLibraryShell(state: LibraryUiState, viewModel: LibraryViewMo
 
         Scaffold(
             snackbarHost = { SnackbarHost(snackbarHost) },
+            topBar = {
+                (state.practice.storageReadError ?: state.practice.workspaceReadError)?.let { message ->
+                    Surface(color = androidx.compose.material3.MaterialTheme.colorScheme.errorContainer) {
+                        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
+                            Text("Practice data needs attention", style = androidx.compose.material3.MaterialTheme.typography.titleSmall)
+                            Text(message, style = androidx.compose.material3.MaterialTheme.typography.bodySmall)
+                            TextButton(onClick = { viewModel.setDestination(AppDestination.SETTINGS) }) { Text("Open backup and recovery") }
+                        }
+                    }
+                }
+            },
             bottomBar = {
                 if (!wide && !compactDetail) {
                     DestinationBottomBar(state, viewModel)
@@ -252,32 +266,32 @@ private fun SpotlightSearchDialog(
     val focusRequester = remember { FocusRequester() }
     val results = remember(query, state.allLessons) { filterLessons(state.allLessons, query) }
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
-    AlertDialog(
+    EditorDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Search all lessons") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = { query = it },
-                    singleLine = true,
-                    placeholder = { Text("Title, course, or dance style") },
-                    modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
-                )
-                Text("${results.size} ${if (results.size == 1) "lesson" else "lessons"}")
-                LazyColumn(Modifier.fillMaxWidth().heightIn(max = 380.dp)) {
-                    items(results, key = { it.id }) { lesson ->
-                        TextButton(onClick = { onSelect(lesson.id) }, modifier = Modifier.fillMaxWidth()) {
-                            Column(Modifier.fillMaxWidth()) {
-                                Text(lesson.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Text(
-                                    lesson.fullFolderLabel(),
-                                    style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
-                                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            }
+        title = "Search all lessons",
+        content = {
+            LazyColumn(Modifier.fillMaxWidth().heightIn(max = 380.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                item {
+                    OutlinedTextField(
+                        value = query,
+                        onValueChange = { query = it },
+                        singleLine = true,
+                        placeholder = { Text("Title, course, or dance style") },
+                        modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
+                    )
+                }
+                item { Text("${results.size} ${if (results.size == 1) "lesson" else "lessons"}") }
+                items(results, key = { it.id }) { lesson ->
+                    TextButton(onClick = { onSelect(lesson.id) }, modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.fillMaxWidth()) {
+                            Text(lesson.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(
+                                lesson.fullFolderLabel(),
+                                style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
+                                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
                         }
                     }
                 }
@@ -322,6 +336,7 @@ private fun DestinationContent(state: LibraryUiState, viewModel: LibraryViewMode
     when (state.destination) {
         AppDestination.LIBRARY -> LibraryScreen(state, viewModel, modifier)
         AppDestination.NOTES -> NotesScreen(state, viewModel, modifier)
+        AppDestination.QUEUE -> PracticeWorkspaceScreen(state, viewModel, modifier)
         AppDestination.FAVORITES -> FavoritesScreen(state, viewModel, modifier)
         AppDestination.HISTORY -> HistoryScreen(state, viewModel, modifier)
         AppDestination.SETTINGS -> SettingsScreen(state, viewModel, modifier)
@@ -331,7 +346,7 @@ private fun DestinationContent(state: LibraryUiState, viewModel: LibraryViewMode
 @Composable
 private fun DestinationBottomBar(state: LibraryUiState, viewModel: LibraryViewModel) {
     NavigationBar {
-        AppDestination.entries.forEach { destination ->
+        listOf(AppDestination.LIBRARY, AppDestination.NOTES, AppDestination.QUEUE, AppDestination.FAVORITES, AppDestination.SETTINGS).forEach { destination ->
             NavigationBarItem(
                 selected = state.destination == destination,
                 onClick = { selectDestination(destination, state, viewModel) },
@@ -362,7 +377,7 @@ private fun DestinationBottomBar(state: LibraryUiState, viewModel: LibraryViewMo
 
 @Composable
 private fun DestinationRail(state: LibraryUiState, viewModel: LibraryViewModel) {
-    NavigationRail(modifier = Modifier.fillMaxHeight()) {
+    NavigationRail(modifier = Modifier.fillMaxHeight().verticalScroll(rememberScrollState())) {
         Spacer(Modifier.height(10.dp))
         Surface(
             color = androidx.compose.material3.MaterialTheme.colorScheme.primary,
@@ -394,6 +409,7 @@ private fun selectDestination(destination: AppDestination, state: LibraryUiState
 private fun AppDestination.icon(): ImageVector = when (this) {
     AppDestination.LIBRARY -> Icons.Rounded.Home
     AppDestination.NOTES -> Icons.Rounded.NoteAlt
+    AppDestination.QUEUE -> Icons.Rounded.PlaylistPlay
     AppDestination.FAVORITES -> Icons.Rounded.Favorite
     AppDestination.HISTORY -> Icons.Rounded.History
     AppDestination.SETTINGS -> Icons.Rounded.Settings

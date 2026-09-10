@@ -13,6 +13,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -53,6 +56,7 @@ import com.deadlywolf.dancelibrary.data.MAX_UI_NOTE_LENGTH
 import com.deadlywolf.dancelibrary.data.MAX_IMPORTED_NOTE_LENGTH
 import com.deadlywolf.dancelibrary.data.PracticeBookmark
 import com.deadlywolf.dancelibrary.data.PracticeReset
+import com.deadlywolf.dancelibrary.data.PracticeReflection
 import com.deadlywolf.dancelibrary.model.Lesson
 
 @Composable
@@ -102,6 +106,7 @@ internal fun FavoritesScreen(
                     lesson = lesson,
                     favorite = true,
                     watched = lesson.id in state.practice.watched,
+                    completed = lesson.legacyPath in state.practice.workspace.completed,
                     resumePositionMs = state.practice.positionsMs[lesson.id],
                     bookmarkCount = state.practice.bookmarks[lesson.id].orEmpty().size,
                     subtitle = lesson.fullFolderLabel(),
@@ -157,6 +162,7 @@ internal fun HistoryScreen(
                         lesson = lesson,
                         favorite = lesson.id in state.practice.favorites,
                         watched = true,
+                        completed = lesson.legacyPath in state.practice.workspace.completed,
                         resumePositionMs = state.practice.positionsMs[lesson.id],
                         bookmarkCount = state.practice.bookmarks[lesson.id].orEmpty().size,
                         subtitle = buildString {
@@ -197,48 +203,97 @@ internal fun NotesScreen(
 ) {
     var query by rememberSaveable { mutableStateOf("") }
     var notesOnly by rememberSaveable { mutableStateOf(false) }
+    var recentlyEdited by rememberSaveable { mutableStateOf(true) }
     var confirmClearNotes by remember { mutableStateOf(false) }
     var editingLessonId by rememberSaveable { mutableStateOf<String?>(null) }
     var editingBookmarkId by rememberSaveable { mutableStateOf<String?>(null) }
+    var editingPositionMs by rememberSaveable { mutableStateOf<Long?>(null) }
     val context = LocalContext.current
     val lessonById = remember(state.catalog) { state.allLessons.associateBy(Lesson::id) }
-    val groups = remember(state.practice.bookmarks, query, notesOnly, state.catalog) {
-        state.practice.bookmarks.mapNotNull { (lessonId, bookmarks) ->
-            val lesson = lessonById[lessonId] ?: return@mapNotNull null
+    val groups = remember(state.practice.bookmarks, state.practice.workspace.reflections, query, notesOnly, recentlyEdited, state.catalog) {
+        state.allLessons.mapNotNull { lesson ->
+            val bookmarks = state.practice.bookmarks[lesson.id].orEmpty()
             val filtered = bookmarks.filter { bookmark ->
-                (!notesOnly || bookmark.note.isNotBlank()) && (
-                    query.isBlank() || lesson.matchesCollectionQuery(query) || bookmark.note.contains(query, ignoreCase = true)
-                )
+                (!notesOnly || bookmark.note.isNotBlank()) && lesson.matchesNotebookQuery(query, bookmark.note)
             }.sortedBy(PracticeBookmark::positionMs)
-            if (filtered.isEmpty()) null else NoteGroup(lesson, filtered)
-        }.sortedWith(compareByDescending<NoteGroup> { it.bookmarks.size }.thenBy { it.lesson.title })
+            val reflection = state.practice.workspace.reflections[lesson.legacyPath]
+                ?.takeIf { it.text.isNotBlank() && lesson.matchesNotebookQuery(query, it.text) }
+            if (filtered.isEmpty() && reflection == null) null else NoteGroup(lesson, filtered, reflection)
+        }.let { groups ->
+            if (recentlyEdited) groups.sortedWith(compareByDescending<NoteGroup> { group ->
+                maxOf(group.bookmarks.maxOfOrNull { it.updatedAtMs } ?: 0L, group.reflection?.updatedAt ?: 0L)
+            }.thenBy { it.lesson.title }) else groups.sortedBy { it.lesson.title.lowercase() }
+        }
     }
 
     LaunchedEffect(Unit) { viewModel.markNotesSeen() }
+    val reflectionCount = state.practice.workspace.reflections.count { it.value.text.isNotBlank() }
 
     Column(modifier.fillMaxSize()) {
         CollectionHeader(
-            title = "Bookmarks & notes",
-            subtitle = "${state.practice.bookmarkCount} bookmarks across ${state.practice.bookmarks.count { it.value.isNotEmpty() }} lessons",
+            title = "Notebook",
+            subtitle = "${state.practice.bookmarkCount} ${if (state.practice.bookmarkCount == 1) "bookmark" else "bookmarks"} · $reflectionCount ${if (reflectionCount == 1) "reflection" else "reflections"}",
             trailing = if (state.practice.bookmarkCount > 0) {
-                { TextButton(onClick = { confirmClearNotes = true }) { Text("Clear") } }
+                { TextButton(onClick = { confirmClearNotes = true }) { Text("Clear bookmarks") } }
             } else null,
         )
         SearchField(query, { query = it }, "Search lessons and notes", Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
         Row(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.padding(horizontal = 16.dp),
+            modifier = Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp),
         ) {
             FilterChip(selected = !notesOnly, onClick = { notesOnly = false }, label = { Text("All") })
             FilterChip(selected = notesOnly, onClick = { notesOnly = true }, label = { Text("With notes") })
+            FilterChip(selected = recentlyEdited, onClick = { recentlyEdited = !recentlyEdited }, label = { Text(if (recentlyEdited) "Recently edited" else "Lesson title") })
         }
         LazyColumn(
             verticalArrangement = Arrangement.spacedBy(12.dp),
             contentPadding = PaddingValues(14.dp),
             modifier = Modifier.weight(1f),
         ) {
+            state.practice.deletedBookmark?.let {
+                item(key = "notebook-undo") { TextButton(onClick = viewModel::undoDeleteBookmark) { Text("Undo deleted bookmark") } }
+            }
+            val drafts = state.practice.noteDrafts.values.filter { it.lessonId in lessonById }
+            if (drafts.isNotEmpty()) item(key = "notebook-drafts") {
+                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("Unfinished notes", style = MaterialTheme.typography.titleMedium)
+                        drafts.sortedByDescending { it.updatedAt }.forEach { draft ->
+                            TextButton(onClick = {
+                                editingLessonId = draft.lessonId
+                                editingBookmarkId = draft.expected?.id
+                                editingPositionMs = draft.expected?.positionMs ?: draft.bookmarkId.substringAfterLast(':').toLongOrNull()
+                            }) {
+                                Column(Modifier.fillMaxWidth()) {
+                                    Text(lessonById[draft.lessonId]?.title.orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(draft.text.ifBlank { "Resume draft" }, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            val reflectionDrafts = state.practice.reflectionDrafts.entries.mapNotNull { (path, draft) ->
+                state.allLessons.firstOrNull { it.legacyPath == path }?.let { it to draft }
+            }
+            if (reflectionDrafts.isNotEmpty()) item(key = "notebook-reflection-drafts") {
+                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+                    Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("Unfinished reflections", style = MaterialTheme.typography.titleMedium)
+                        reflectionDrafts.forEach { (lesson, draft) ->
+                            TextButton(onClick = { viewModel.setDestination(AppDestination.LIBRARY); viewModel.selectLesson(lesson.id) }) {
+                                Column(Modifier.fillMaxWidth()) {
+                                    Text(lesson.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(draft.text.ifBlank { "Resume reflection draft" }, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             if (groups.isEmpty()) {
-                item { EmptyCollection("No matching notes", "Add a timestamp bookmark while practicing, with or without a note.") }
+                item { EmptyCollection("No matching notes", "Add a timestamp note or lesson reflection while practicing.") }
             } else {
                 items(groups, key = { it.lesson.id }) { group ->
                     NoteGroupCard(
@@ -251,8 +306,13 @@ internal fun NotesScreen(
                         onEdit = { bookmark ->
                             editingLessonId = group.lesson.id
                             editingBookmarkId = bookmark.id
+                            editingPositionMs = bookmark.positionMs
                         },
                         onDelete = { bookmark -> viewModel.deleteBookmark(group.lesson.id, bookmark.id) },
+                        onOpenReflection = {
+                            viewModel.setDestination(AppDestination.LIBRARY)
+                            viewModel.selectLesson(group.lesson.id)
+                        },
                     )
                 }
             }
@@ -262,8 +322,8 @@ internal fun NotesScreen(
     if (confirmClearNotes) {
         AlertDialog(
             onDismissRequest = { confirmClearNotes = false },
-            title = { Text("Clear all bookmarks and notes?") },
-            text = { Text("This removes every saved timestamp and note. History and favorites stay safe.") },
+            title = { Text("Clear all timestamp bookmarks?") },
+            text = { Text("This removes saved timestamps and their notes. Lesson reflections are managed separately in practice data.") },
             confirmButton = {
                 TextButton(onClick = {
                     viewModel.reset(PracticeReset.BOOKMARKS_AND_NOTES)
@@ -275,27 +335,27 @@ internal fun NotesScreen(
     }
 
     val editingLesson = editingLessonId?.let(lessonById::get)
-    val editingBookmark = editingLessonId?.let(state.practice.bookmarks::get)
-        ?.firstOrNull { it.id == editingBookmarkId }
-    if (editingLesson != null && editingBookmark != null) {
-        NoteEditorDialog(
-            title = "Edit note at ${formatPlaybackTime(editingBookmark.positionMs)}",
-            initialValue = editingBookmark.note,
-            maxLength = MAX_IMPORTED_NOTE_LENGTH,
+    val editingBookmark = remember(editingLessonId, editingBookmarkId) {
+        editingBookmarkId?.let { state.practice.noteDrafts[it]?.expected }
+            ?: editingLessonId?.let(state.practice.bookmarks::get)?.firstOrNull { it.id == editingBookmarkId }
+    }
+    if (editingLesson != null && editingPositionMs != null) {
+        PracticeNoteEditor(
+            state = state, viewModel = viewModel, lesson = editingLesson, bookmark = editingBookmark, positionMs = editingPositionMs!!,
             onDismiss = {
                 editingLessonId = null
                 editingBookmarkId = null
-            },
-            onSave = { note ->
-                viewModel.updateBookmarkNote(editingLesson.id, editingBookmark.id, note)
-                editingLessonId = null
-                editingBookmarkId = null
+                editingPositionMs = null
             },
         )
     }
 }
 
-private data class NoteGroup(val lesson: Lesson, val bookmarks: List<PracticeBookmark>)
+private class NoteGroup(lesson: Lesson, bookmarks: List<PracticeBookmark>, reflection: PracticeReflection?) {
+    val lesson: Lesson = lesson
+    val bookmarks: List<PracticeBookmark> = bookmarks
+    val reflection: PracticeReflection? = reflection
+}
 
 @Composable
 private fun NoteGroupCard(
@@ -304,11 +364,22 @@ private fun NoteGroupCard(
     onCopy: (PracticeBookmark) -> Unit,
     onEdit: (PracticeBookmark) -> Unit,
     onDelete: (PracticeBookmark) -> Unit,
+    onOpenReflection: () -> Unit,
 ) {
     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
             Text(group.lesson.title, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Text(group.lesson.fullFolderLabel(), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            group.reflection?.let { reflection ->
+                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+                    Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Lesson reflection", style = MaterialTheme.typography.labelLarge)
+                        Text(reflection.text, maxLines = 10, overflow = TextOverflow.Ellipsis)
+                        Text(formatRelativeTime(reflection.updatedAt), style = MaterialTheme.typography.bodySmall)
+                        TextButton(onClick = onOpenReflection) { Text("Open reflection") }
+                    }
+                }
+            }
             group.bookmarks.forEach { bookmark ->
                 Card(
                     onClick = { onOpen(bookmark) },
@@ -319,10 +390,10 @@ private fun NoteGroupCard(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             AssistChip(onClick = { onOpen(bookmark) }, label = { Text(formatPlaybackTime(bookmark.positionMs)) })
                             Spacer(Modifier.width(8.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(bookmark.note.ifBlank { "Timestamp bookmark" }, style = MaterialTheme.typography.bodyMedium)
-                                Text(formatRelativeTime(bookmark.updatedAtMs), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
+                            Text(formatRelativeTime(bookmark.updatedAtMs), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Text(bookmark.note.ifBlank { "Timestamp bookmark" }, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(end = 10.dp), maxLines = 10, overflow = TextOverflow.Ellipsis)
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                             IconButton(onClick = { onCopy(bookmark) }) {
                                 Icon(Icons.Rounded.ContentCopy, contentDescription = "Copy note")
                             }
@@ -345,29 +416,52 @@ internal fun NoteEditorDialog(
     title: String,
     initialValue: String,
     maxLength: Int = MAX_UI_NOTE_LENGTH,
+    editorKey: String = title,
+    saving: Boolean = false,
+    status: String? = null,
+    savedDraftValue: String? = null,
+    tracksDraft: Boolean = false,
+    onDraftChange: (String) -> Unit = {},
+    onDiscardDraft: (() -> Unit)? = null,
     onDismiss: () -> Unit,
     onSave: (String) -> Unit,
 ) {
-    var value by rememberSaveable(initialValue, maxLength) { mutableStateOf(initialValue.take(maxLength)) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
+    var value by rememberSaveable(editorKey) { mutableStateOf(initialValue) }
+    val context = LocalContext.current
+    EditorDialog(
+        onDismissRequest = { if (!saving) onDismiss() },
         icon = { Icon(Icons.Rounded.NoteAlt, contentDescription = null) },
-        title = { Text(title) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        title = title,
+        content = { compact ->
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 OutlinedTextField(
                     value = value,
-                    onValueChange = { value = it.take(maxLength) },
+                    enabled = !saving,
+                    onValueChange = { updated ->
+                        if (updated.length <= maxLength || updated.length < value.length) {
+                            value = updated
+                            onDraftChange(updated)
+                        }
+                    },
                     label = { Text("Optional note") },
                     supportingText = { Text("${value.length}/$maxLength") },
-                    minLines = 2,
-                    maxLines = 4,
+                    minLines = if (compact) 1 else 4,
+                    maxLines = 8,
                     modifier = Modifier.fillMaxWidth(),
                 )
+                status?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                if (tracksDraft && status == null) Text(
+                    if (savedDraftValue == value) "Draft saved on this device. Save adds it to your notebook."
+                    else if (value == initialValue) "Save adds this note to your notebook."
+                    else "Saving draft… Keep this editor open until the draft is saved on this device.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                TextButton(onClick = { copyPracticeText(context, "Dance Library note draft", value) }) { Text("Copy text") }
+                onDiscardDraft?.let { discard -> TextButton(enabled = !saving, onClick = discard) { Text("Discard draft") } }
             }
         },
-        confirmButton = { TextButton(onClick = { onSave(value.trim()) }) { Text("Save") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        confirmButton = { TextButton(enabled = !saving && value.length <= maxLength, onClick = { onSave(value) }) { Text(if (saving) "Saving…" else "Save") } },
+        dismissButton = { TextButton(enabled = !saving, onClick = onDismiss) { Text("Close") } },
     )
 }
 
@@ -447,20 +541,32 @@ private fun EmptyCollection(title: String, subtitle: String) {
 }
 
 private fun Lesson.matchesCollectionQuery(query: String): Boolean {
-    if (query.isBlank()) return true
-    val haystack = listOf(title, course, courseDisplayName, breadcrumbs.joinToString(" "), legacyPath).joinToString(" ")
-    return query.trim().split(Regex("\\s+")).all { term -> haystack.contains(term, ignoreCase = true) }
+    return matchesNotebookQuery(query, "")
 }
 
-internal fun Lesson.fullFolderLabel(): String = (listOf(courseDisplayName) + breadcrumbs)
-    .filter(String::isNotBlank)
-    .joinToString(" › ")
+private fun Lesson.matchesNotebookQuery(query: String, note: String): Boolean {
+    if (query.isBlank()) return true
+    fun normalized(value: String) = java.text.Normalizer.normalize(value, java.text.Normalizer.Form.NFD)
+        .replace(Regex("\\p{M}+"), "").lowercase(java.util.Locale.ROOT)
+    val haystack = normalized(listOf(title, course, courseDisplayName.orEmpty(), breadcrumbs.joinToString(" "), legacyPath, note).joinToString(" "))
+    return normalized(query).trim().split(Regex("\\s+")).all(haystack::contains)
+}
+
+internal fun Lesson.fullFolderLabel(): String {
+    val display = courseDisplay(courseDisplayName.ifBlank { course }, categoryTitle)
+    val courseLabel = listOf(display.heading, display.teacher).filter(String::isNotBlank).joinToString(" · ")
+    return (listOf(courseLabel) + breadcrumbs).filter(String::isNotBlank).joinToString(" › ")
+}
 
 private fun copyNote(context: Context, lesson: Lesson, bookmark: PracticeBookmark) {
     val text = buildString {
         append(lesson.title).append(" [").append(formatPlaybackTime(bookmark.positionMs)).append(']')
         if (bookmark.note.isNotBlank()) append("\n").append(bookmark.note)
     }
+    copyPracticeText(context, "Dance Library note", text)
+}
+
+internal fun copyPracticeText(context: Context, label: String, text: String) {
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-    clipboard.setPrimaryClip(ClipData.newPlainText("Dance Library note", text))
+    clipboard.setPrimaryClip(ClipData.newPlainText(label, text))
 }

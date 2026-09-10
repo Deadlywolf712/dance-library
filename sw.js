@@ -1,20 +1,31 @@
 // Resilient offline shell for Dance Library.
 // Navigations use network-first; static assets use stale-while-revalidate.
 
-const CACHE_VERSION = 15;
+const CACHE_VERSION = 28;
 const CACHE_PREFIX = 'dance-library-v';
 const CACHE_NAME = `${CACHE_PREFIX}${CACHE_VERSION}`;
 
 const APP_FILES = [
   './',
   './index.html',
-  './style.css?v=15',
-  './course-taxonomy.js?v=15',
-  './app.js?v=15',
-  './data.js?v=15',
-  './salsa_course.js?v=15',
-  './playback-core.js?v=15',
-  './sw-register.js?v=15',
+  './style.css?v=28',
+  './notebook.css?v=28',
+  './workspace.css?v=28',
+  './lesson-workspace.css?v=28',
+  './settings.css?v=28',
+  './settings-design.js?v=28',
+  './course-browser.css?v=28',
+  './course-browser.js?v=28',
+  './library-core.js?v=28',
+  './practice-store.js?v=28',
+  './practice-workspace.js?v=28',
+  './course-taxonomy.js?v=28',
+  './app.js?v=28',
+  './data.js?v=28',
+  './salsa_course.js?v=28',
+  './playback-core.js?v=28',
+  './notes-core.js?v=28',
+  './sw-register.js?v=28',
   './manifest.json',
   './icon.svg',
   './icon-192.png',

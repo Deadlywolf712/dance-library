@@ -2,6 +2,38 @@ import { expect, test } from '@playwright/test';
 
 const LESSON_PATH = 'Adolfo Indacochea  Tania Cannarsa - Salsa On2 Advanced/01 - Syncopation.mp4';
 
+test.describe('desktop media keyboard ownership', () => {
+  test.use({ isMobile: false, hasTouch: false, viewport: { width: 1280, height: 900 } });
+
+  test('Space toggles native video playback exactly once and still works from the lesson heading', async ({ page }) => {
+    await openLesson(page);
+    const player = page.locator('#video-player');
+    for (const selector of ['#video-player', '#video-title']) {
+      await player.evaluate(async video => { video.currentTime = 0; video.muted = true; await video.play(); });
+      await page.locator(selector).focus();
+      await page.keyboard.press('Space');
+      await expect.poll(() => player.evaluate(video => video.paused)).toBe(true);
+      await page.keyboard.press('Space');
+      await expect.poll(() => player.evaluate(video => video.paused)).toBe(false);
+    }
+  });
+
+  test('course dialog panel owns shortcuts and cannot resume or change the lesson behind it', async ({ page }) => {
+    await openLesson(page);
+    const player = page.locator('#video-player');
+    await player.evaluate(async video => { video.currentTime = 2; video.muted = true; await video.play(); });
+    await page.locator('#browse-courses-btn').click();
+    const position = await player.evaluate(video => video.currentTime);
+    await page.locator('.course-browser-panel').focus();
+    for (const key of ['Space', 'ArrowRight', 'm', 't', 'b']) await page.keyboard.press(key);
+    await expect(page.locator('#course-browser-modal')).toBeVisible();
+    expect(await player.evaluate(video => ({ paused: video.paused, time: video.currentTime }))).toEqual({ paused: true, time: position });
+    await expect(page.locator('#theater-btn')).toHaveAttribute('aria-pressed', 'false');
+    await expect(page.locator('#mirror-btn')).toHaveAttribute('aria-pressed', 'false');
+    await expect(page.locator('#bookmark-edit-input')).toBeHidden();
+  });
+});
+
 async function installFakeHls(page) {
   await page.addInitScript(() => {
     function createWaveUrl(durationSeconds = 12) {

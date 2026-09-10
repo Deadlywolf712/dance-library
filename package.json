@@ -3,12 +3,13 @@
   "private": true,
   "version": "1.0.0",
   "scripts": {
+    "dev": "node scripts/preview-server.cjs . 4178",
     "audit:catalog": "node scripts/audit-catalog-accuracy.mjs",
-    "audit:content": "node scripts/validate-content-audit.mjs",
     "export:android-catalog": "node scripts/export-android-catalog.mjs",
-    "test": "node scripts/validate-site.mjs && node scripts/validate-playback.mjs && node scripts/validate-pages-package.mjs && node scripts/audit-catalog-accuracy.mjs --no-write && node scripts/validate-content-audit.mjs && playwright test",
+    "test": "node scripts/validate-site.mjs && node scripts/validate-playback.mjs && node --test scripts/validate-notes.cjs scripts/validate-library.cjs scripts/validate-store.cjs scripts/validate-workspace.cjs && node scripts/validate-pages-package.mjs && node scripts/audit-catalog-accuracy.mjs --no-write && node scripts/validate-content-audit.mjs && playwright test",
     "test:pages": "node scripts/validate-pages-package.mjs",
-    "test:playback": "playwright test"
+    "test:playback": "playwright test",
+    "audit:content": "node scripts/validate-content-audit.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.61.1"

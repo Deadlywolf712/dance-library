@@ -38,6 +38,29 @@ document.addEventListener('DOMContentLoaded', () => {
         showFatalError('The video playback helpers did not load. Check your connection, then reload the library.');
         return;
     }
+    const notesCore = globalThis.DanceLibraryNotes;
+    if (!notesCore) {
+        showFatalError('The notebook helpers did not load. Reload the library to try again.');
+        return;
+    }
+    if (!globalThis.DanceLibraryCatalog || !globalThis.DanceLibraryStore || !globalThis.DanceLibraryWorkspace) {
+        showFatalError('The practice workspace did not load. Reload the library to try again.');
+        return;
+    }
+    const catalog = DanceLibraryCatalog.createCatalog(videoData, COURSE_TAXONOMY);
+    const routes = DanceLibraryRoutes;
+    let repository;
+    try { repository = DanceLibraryStore.createRepository(); }
+    catch (error) {
+        const unavailable = () => { throw error; };
+        repository = DanceLibraryStore.createRepository({ storage: { getItem: unavailable, setItem: unavailable, removeItem: unavailable }, eventTarget: null, locks: null });
+    }
+    let workspace = null;
+    let courseBrowser = null;
+    let navigationReady = false;
+    let restoringRoute = false;
+    let routeInitialized = false;
+    let notesReturnRoute = { view: 'home' };
 
     const compactLayoutQuery = window.matchMedia('(max-width: 900px)');
     const usesCompactLayout = () => compactLayoutQuery.matches;
@@ -47,34 +70,23 @@ document.addEventListener('DOMContentLoaded', () => {
     const HLS_RUNTIME_URL = 'https://cdn.jsdelivr.net/npm/hls.js@1.6.16/dist/hls.min.js';
     const HLS_RUNTIME_INTEGRITY = 'sha384-5E8B0pTlZZJMabWpC0fyYf6OUpe15jJij34BqBAh4NXoHAlLNOjCPRrwtOXOQFAn';
     const HLS_RUNTIME_TIMEOUT_MS = 8000;
-    const SUMMARY_ASSET_VERSION = 15;
+    const SUMMARY_ASSET_VERSION = 28;
     const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
     const preferredScrollBehavior = () => reducedMotionQuery.matches ? 'auto' : 'smooth';
-    const courseDisplayNames = COURSE_TAXONOMY.courseDisplayNameByFolder || Object.freeze({});
-
-    function displayCourseName(courseFolder) {
-        return courseDisplayNames[courseFolder] || courseFolder;
-    }
-
-    function displayBrowsePathSegment(segment, index) {
-        return index === 1 ? displayCourseName(segment) : segment;
-    }
-
-    function formatVideoFolderPath(folderParts, separator = ' / ') {
-        return folderParts
-            .map((part, index) => index === 0 ? displayCourseName(part) : part)
-            .join(separator);
-    }
-
-    function searchableVideoText(videoPath, title) {
-        const courseFolder = videoPath.split('/')[0] || '';
-        return `${videoPath} ${displayCourseName(courseFolder)} ${title}`.toLowerCase();
-    }
 
     document.documentElement.classList.toggle('hosted-site', isHosted);
 
     let storageWarningShown = false;
     let storageAccessFailed = false;
+    const invalidStorageKeys = new Set();
+
+    function showStorageStatus(message) {
+        document.getElementById('storage-status-copy').textContent = message;
+        document.getElementById('storage-status').hidden = false;
+    }
+    document.getElementById('dismiss-storage-status').addEventListener('click', () => {
+        document.getElementById('storage-status').hidden = true;
+    });
 
     function warnStorage(key, error) {
         storageAccessFailed = true;
@@ -96,18 +108,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function safeRemove(key) {
-        try {
-            localStorage.removeItem(key);
-            return true;
-        } catch (error) {
-            warnStorage(key, error);
-            return false;
-        }
-    }
-
     const isRecord = value => value && typeof value === 'object' && !Array.isArray(value);
-    const isFiniteTime = value => Number.isFinite(Number(value)) && Number(value) >= 0;
+    const isFiniteTime = notesCore.isTime;
     const storageValidators = {
         watchedVideos: value => Array.isArray(value) && value.every(item => typeof item === 'string'),
         favoriteVideos: value => Array.isArray(value) && value.every(item => typeof item === 'string'),
@@ -115,15 +117,8 @@ document.addEventListener('DOMContentLoaded', () => {
         collapsedSections: value => isRecord(value) && Object.values(value).every(item => typeof item === 'boolean'),
         videoPositions: value => isRecord(value) && Object.values(value).every(isFiniteTime),
         videoLastWatched: value => isRecord(value) && Object.values(value).every(isFiniteTime),
-        videoBookmarks: value => isRecord(value) && Object.values(value).every(items =>
-            Array.isArray(items) && items.every(item =>
-                isFiniteTime(item)
-                || (isRecord(item)
-                    && isFiniteTime(item.t)
-                    && (item.n === undefined || (typeof item.n === 'string' && item.n.length <= 2000))
-                    && (item.ts === undefined || isFiniteTime(item.ts)))
-            )
-        )
+        videoBookmarks: value => notesCore.normalizeBookmarks(value).invalid === 0,
+        practiceData: DanceLibraryStore.validatePracticeData
     };
 
     // Safe JSON parse with schema validation (never crashes on corrupt or wrong-shaped data).
@@ -132,29 +127,77 @@ document.addEventListener('DOMContentLoaded', () => {
         if (raw === null) return fallback;
         try {
             const parsed = JSON.parse(raw);
+            if (key === 'videoBookmarks') {
+                const result = notesCore.normalizeBookmarks(parsed);
+                if (result.invalid) {
+                    invalidStorageKeys.add(key);
+                    showStorageStatus('Some saved notes need recovery. Your original data is preserved; download a copy before making changes.');
+                }
+                return result.bookmarks;
+            }
             const validator = validate || storageValidators[key] || (() => true);
             if (!validator(parsed)) throw new TypeError(`Unexpected data shape for ${key}`);
             return parsed;
         } catch (error) {
             console.warn('Ignoring invalid browser storage:', key, error);
-            safeRemove(key);
+            invalidStorageKeys.add(key);
+            showStorageStatus('Saved data needs recovery. The original is preserved; download a copy before making changes.');
             return fallback;
         }
     }
 
     // Safe localStorage write (handles quota exceeded, private mode, disabled storage)
     function safeStore(key, value) {
+        if (invalidStorageKeys.has(key)) {
+            showStorageStatus('Changes cannot overwrite data that needs recovery. Download your recovery data first.');
+            return false;
+        }
         try {
             const serialized = typeof value === 'string' ? value : JSON.stringify(value);
             localStorage.setItem(key, serialized);
             return true;
         }
         catch(e) {
+            showStorageStatus('Changes could not be saved on this device. Keep this page open and download recovery data.');
             if (warnStorage(key, e)) {
                 showToast('Practice progress cannot be saved in this browser session.', 5000, true);
             }
             return false;
         }
+    }
+
+    function reportSaveFailure(result) {
+        if (result.ok) return false;
+        showStorageStatus(result.error?.message || 'Changes could not be saved. Keep this page open and download recovery data.');
+        return true;
+    }
+    async function toggleFavorite(path) {
+        const result = await repository.update('favoriteVideos', [], current => {
+            const favorites = new Set(current);
+            if (favorites.has(path)) favorites.delete(path); else favorites.add(path);
+            return [...favorites];
+        }, storageValidators.favoriteVideos);
+        if (reportSaveFailure(result)) return false;
+        state.favorites = new Set(result.value);
+        updateFavBtn();
+        updateNotesBadge();
+        return true;
+    }
+    function savePosition(path, position) {
+        return repository.update('videoPositions', {}, positions => {
+            if (position === null) delete positions[path];
+            else Object.defineProperty(positions, path, { value: position, enumerable: true, writable: true, configurable: true });
+            return positions;
+        }, storageValidators.videoPositions).then(result => { reportSaveFailure(result); return result; });
+    }
+    function saveViewed(path, timestamp) {
+        return repository.transact({
+            watchedVideos: { fallback: [], validate: storageValidators.watchedVideos },
+            videoLastWatched: { fallback: {}, validate: storageValidators.videoLastWatched }
+        }, values => ({
+            watchedVideos: [...new Set([...values.watchedVideos, path])],
+            videoLastWatched: { ...values.videoLastWatched, [path]: Math.max(values.videoLastWatched[path] || 0, timestamp) }
+        })).then(result => { reportSaveFailure(result); return result; });
     }
 
     const naturalCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
@@ -270,9 +313,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // State
     const state = {
         tree: {},
+        folderPath: [],
+        completed: safeLoad('practiceData', DanceLibraryStore.emptyPracticeData()).completed,
         currentVideo: null,
         watched: new Set(safeLoad('watchedVideos', [], Array.isArray)),
-        useBunny: isHosted || checkIsMobile() ? true : (safeGet('useBunny', 'false') === 'true'),
+        useBunny: isHosted || checkIsMobile() ? true : (safeGet('useBunny', 'true') === 'true'),
         theme: safeGet('theme', 'arctic'),
         bunnyPullZone: normalizeBunnyPullZone(
             safeGet('bunny_pull_zone', typeof BUNNY_PULL_ZONE !== 'undefined' ? BUNNY_PULL_ZONE : '')
@@ -298,9 +343,6 @@ document.addEventListener('DOMContentLoaded', () => {
         videoView: document.getElementById('video-view'),
         courseGrid: document.getElementById('course-grid'),
         videoPlayer: document.getElementById('video-player'),
-        videoUnavailable: document.getElementById('video-unavailable'),
-        videoUnavailableReason: document.getElementById('video-unavailable-reason'),
-        videoControlsBar: document.querySelector('.video-controls-bar'),
         videoRetryBtn: document.getElementById('video-retry-btn'),
         
         videoTitle: document.getElementById('video-title'),
@@ -406,6 +448,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function init() {
         document.body.dataset.view = 'home';
         parseDataToTree();
+        initWorkspace();
         const knownThemes = new Set([...elements.themeSelect.options].map(option => option.value));
         if (!knownThemes.has(state.theme)) state.theme = 'arctic';
         applyTheme(state.theme);
@@ -414,6 +457,8 @@ document.addEventListener('DOMContentLoaded', () => {
         setupEventListeners();
         setupDialogAccessibility();
         window.addEventListener('popstate', restoreRoute);
+        window.addEventListener('hashchange', restoreRoute);
+        navigationReady = true;
         queueMicrotask(restoreRoute);
         
         // Init UI state
@@ -421,6 +466,7 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.sourceToggle.disabled = isHosted;
         elements.themeSelect.value = state.theme;
         updateNotesBadge();
+        if (repository.getRecoveryStatus().required) showStorageStatus('A previous save could not be fully restored. Changes are paused to protect its recovery copy. Download recovery data.');
         document.body.dataset.appReady = 'true';
 
         // Hide loading spinner
@@ -430,38 +476,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Parse Data into Hierarchical Tree
     function parseDataToTree() {
-        // Initialize top level styles
-        COURSE_TAXONOMY.categoryOrder.forEach(style => {
-            state.tree[style] = { name: style, subfolders: {}, videos: [] };
-        });
-
-        for (const [path, info] of Object.entries(videoData)) {
-            const parts = path.split('/');
-            parts.pop();
-            const topFolder = parts[0];
-            
-            const style = COURSE_TAXONOMY.courseCategoryByFolder[topFolder] || 'Other';
-            
-            let currentLevel = state.tree[style];
-            
-            for (const folder of parts) {
-                if (!currentLevel.subfolders[folder]) {
-                    currentLevel.subfolders[folder] = { name: folder, subfolders: {}, videos: [] };
-                }
-                currentLevel = currentLevel.subfolders[folder];
-            }
-            
-            const title = titleForVideo(path, info);
-            currentLevel.videos.push({
-                ...info,
-                title,
-                path
-            });
-        }
+        state.tree = catalog.folder([]).subfolders;
     }
 
     function sortFolders(folders, isRoot) {
-        if (!isRoot) return folders.sort();
+        if (!isRoot) return folders.sort((a, b) => {
+            const first = coursePresentation(a);
+            const second = coursePresentation(b);
+            return compareNatural(`${first.teacher} ${first.title}`, `${second.teacher} ${second.title}`)
+                || first.rank - second.rank || compareNatural(a, b);
+        });
         const order = COURSE_TAXONOMY.categoryOrder;
         return folders.sort((a, b) => {
             const iA = order.indexOf(a);
@@ -473,6 +497,30 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Display metadata is separate from the exact folder names used by routes and saved data.
+    function displayCourseName(name) {
+        return COURSE_TAXONOMY.courseDisplayNameByFolder?.[name] || name;
+    }
+
+    function displayFolderPath(parts) {
+        return parts.map((part, index) => index === 0 ? displayCourseName(part) : part).join(' / ');
+    }
+
+    function coursePresentation(name, category = '') {
+        const displayName = displayCourseName(name);
+        const separator = /\s[-—]\s/.exec(displayName);
+        if (!separator) return { title: displayName, teacher: '', level: '', rank: 0, displayName };
+        const teacher = displayName.slice(0, separator.index).replace(/\s{2,}/g, ' & ');
+        const description = displayName.slice(separator.index + separator[0].length).trim();
+        const match = description.match(/\s*\(?\b(Beginner(?:\s*[-–/]?\s*Intermediate)?|Intermediate(?:\s*[-–/]?\s*Advanced)?|Advanced|Open Level)\)?$/i);
+        const rawLevel = match?.[1] || '';
+        const level = rawLevel.replace(/\s*[-–/]?\s*(Intermediate|Advanced)/gi, '–$1').replace(/^–/, '');
+        const title = (match ? description.slice(0, match.index).trim() : description) || category || 'Course';
+        const rank = !match || /^Open Level$/i.test(rawLevel) ? 6 : /^Beginner$/i.test(rawLevel) ? 1 : /^Beginner/i.test(rawLevel) ? 2
+            : /^Intermediate$/i.test(rawLevel) ? 3 : /^Intermediate/i.test(rawLevel) ? 4 : 5;
+        return { title, teacher, level, rank, displayName };
+    }
+
     // Helper to recursively count videos in a folder
     function countVideos(node) {
         let count = node.videos.length;
@@ -482,13 +530,13 @@ document.addEventListener('DOMContentLoaded', () => {
         return count;
     }
 
-    function countWatchedInFolder(node) {
+    function countWatchedInFolder(node, completed = state.completed) {
         let count = 0;
         for (const v of node.videos) {
-            if (state.watched.has(v.path)) count++;
+            if (completed[v.path] !== undefined) count++;
         }
         for (const sub of Object.values(node.subfolders)) {
-            count += countWatchedInFolder(sub);
+            count += countWatchedInFolder(sub, completed);
         }
         return count;
     }
@@ -498,7 +546,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const activeStyles = Object.values(state.tree).filter(node => countVideos(node) > 0).length;
         const watched = [...state.watched].filter(path => videoData[path]).length;
         const favorites = [...state.favorites].filter(path => videoData[path]).length;
-        const values = { videos: totalVideos, styles: activeStyles, watched, favorites };
+        const completed = Object.keys(state.completed).filter(path => catalog.find(path)).length;
+        const values = { videos: totalVideos, styles: activeStyles, watched, favorites, completed };
         const formatter = new Intl.NumberFormat();
 
         for (const [name, value] of Object.entries(values)) {
@@ -535,10 +584,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const mainContent = document.getElementById('main-content');
         const skipLink = document.querySelector('.skip-link');
 
-        elements.sidebar.inert = dialogOpen || closed;
-        elements.sidebar.setAttribute('aria-hidden', String(dialogOpen || closed));
+        const theaterOpen = document.body.classList.contains('theater-mode');
+        elements.sidebar.inert = dialogOpen || closed || theaterOpen;
+        elements.sidebar.setAttribute('aria-hidden', String(dialogOpen || closed || theaterOpen));
         if (mainContent) mainContent.inert = dialogOpen || mobileOpen;
-        if (skipLink) skipLink.inert = dialogOpen || mobileOpen;
+        if (skipLink) skipLink.inert = dialogOpen || mobileOpen || theaterOpen;
         const expanded = usesCompactLayout()
             ? elements.sidebar.classList.contains('open')
             : !document.body.classList.contains('sidebar-closed');
@@ -690,37 +740,46 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    function setVideoRoute(videoPath, replace = false) {
+    function writeRoute(route, replace = false) {
+        if (!navigationReady || restoringRoute) return;
         try {
             const url = new URL(location.href);
-            url.hash = `video=${encodeURIComponent(videoPath)}`;
-            const method = replace ? 'replaceState' : 'pushState';
-            if (url.href !== location.href) history[method]({ video: videoPath }, '', url);
-        } catch (error) {
-            console.warn('Could not update the lesson URL:', error);
-        }
+            url.hash = routes.format(route);
+            if (url.href !== location.href) history[replace ? 'replaceState' : 'pushState'](route, '', url);
+        } catch (error) { console.warn('Could not update the workspace URL:', error); }
     }
-
-    function setHomeRoute(replace = false) {
-        try {
-            const url = new URL(location.href);
-            url.hash = '';
-            const method = replace ? 'replaceState' : 'pushState';
-            if (url.href !== location.href) history[method]({ view: 'home' }, '', url);
-        } catch (error) {
-            console.warn('Could not update the library URL:', error);
-        }
-    }
-
+    function setVideoRoute(path, replace = false, time) { writeRoute({ view: 'video', path, ...(time !== undefined ? { time } : {}) }, replace); }
+    function setHomeRoute(replace = false) { writeRoute({ view: 'home' }, replace); }
+    function setFolderRoute(path) { writeRoute(path.length ? { view: 'folder', path } : { view: 'home' }); }
     function focusHomeHeading() {
         requestAnimationFrame(() => document.getElementById('home-title')?.focus({ preventScroll: true }));
     }
-
     function scrollMainToTop() {
         elements.mainContent.scrollTo({ top: 0, behavior: preferredScrollBehavior() });
     }
-
-    function showLibraryHome(updateHistory = true) {
+    function updateWorkspaceNavigation(view) {
+        const selected = view === 'video' || view === 'folder' ? 'home' : view;
+        document.querySelectorAll('[data-workspace-view]').forEach(button => {
+            if (button.dataset.workspaceView === selected) button.setAttribute('aria-current', 'page');
+            else button.removeAttribute('aria-current');
+        });
+        for (const [id, target] of [['nav-library', 'home'], ['nav-notebook', 'notes'], ['nav-queue', 'queue']]) {
+            const button = document.getElementById(id);
+            const active = id === 'nav-library' ? view === 'home' && state.folderPath.length === 0 : target === selected;
+            if (active) button.setAttribute('aria-current', 'page');
+            else button.removeAttribute('aria-current');
+        }
+        document.getElementById('queue-view').hidden = view !== 'queue';
+        const currentStyle = state.currentVideo
+            ? catalog.find(state.currentVideo.path)?.category || state.currentVideo.category : null;
+        document.querySelectorAll('[data-style-name]').forEach(button => {
+            const active = (view === 'home' && state.folderPath[0] === button.dataset.styleName)
+                || (view === 'video' && currentStyle === button.dataset.styleName);
+            if (active) button.setAttribute('aria-current', 'page');
+            else button.removeAttribute('aria-current');
+        });
+    }
+    function showLibraryHome(updateHistory = true, folderPath = []) {
         pauseVideoPlayback({ destroyStream: true });
         document.body.dataset.view = 'home';
         elements.videoView.style.display = 'none';
@@ -728,27 +787,171 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.homeView.style.display = 'block';
         clearActiveVideoLinks();
         state.currentVideo = null;
-        renderHomeTiles(null, []);
+        renderHomeTiles(folderPath.length ? catalog.folder(folderPath) : null, folderPath);
+        updateWorkspaceNavigation('home');
+        workspace?.render();
         scrollMainToTop();
-        if (updateHistory) setHomeRoute();
+        if (updateHistory) setFolderRoute(state.folderPath);
         focusHomeHeading();
     }
-
+    function showQueueView() {
+        pauseVideoPlayback({ destroyStream: true });
+        elements.homeView.style.display = 'none';
+        elements.videoView.style.display = 'none';
+        closeNotesView({ restoreFocus: false });
+        document.body.dataset.view = 'queue';
+        updateWorkspaceNavigation('queue');
+        workspace?.render();
+        writeRoute({ view: 'queue' });
+        if (usesCompactLayout()) setSidebarOpen(false, { restoreFocus: false });
+        scrollMainToTop();
+        document.getElementById('queue-heading').focus({ preventScroll: true });
+    }
+    function navigateToRoute(route) {
+        if (route.view === 'video') {
+            const video = resolveVideoObj(route.path);
+            if (!video) return false;
+            if (state.currentVideo?.path === route.path && document.body.dataset.view === 'video') {
+                if (route.time !== undefined) seekCurrentLesson(route.time);
+            } else loadVideo(video, { updateHistory: false, seekTime: route.time });
+        } else if (route.view === 'folder') {
+            if (!catalog.folder(route.path)) return false;
+            showLibraryHome(false, route.path);
+        } else if (route.view === 'notes') showNotesView();
+        else if (route.view === 'queue') showQueueView();
+        else showLibraryHome(false);
+        return !route.invalid;
+    }
     function restoreRoute() {
-        const params = new URLSearchParams(location.hash.replace(/^#/, ''));
-        const videoPath = params.get('video');
-        if (!videoPath) {
-            if (state.currentVideo) showLibraryHome(false);
-            return;
+        const route = routes.parse(location.hash);
+        if (!routeInitialized) {
+            routeInitialized = true;
+            if (route.view === 'home' && !route.invalid) return;
         }
-
-        const videoObj = resolveVideoObj(videoPath);
-        if (videoObj) {
-            if (!state.currentVideo || state.currentVideo.path !== videoPath) loadVideo(videoObj, { updateHistory: false });
-        } else {
-            showToast('That shared lesson is no longer in this library.', 5000, true);
+        restoringRoute = true;
+        let valid;
+        try { valid = navigateToRoute(route); }
+        finally { restoringRoute = false; }
+        if (!valid) {
+            showLibraryHome(false);
             setHomeRoute(true);
+            showToast('That link could not be found. Your library is still available.', 5000, true);
         }
+    }
+    function initWorkspace() {
+        document.getElementById('mobile-header').after(document.getElementById('storage-status'));
+        const utilities = document.createElement('nav');
+        utilities.className = 'sidebar-utilities';
+        utilities.setAttribute('aria-label', 'Library tools');
+        for (const [id, label] of [['favs-sidebar-btn', 'Favorites'], ['history-sidebar-btn', 'History'], ['help-btn', 'Help'], ['open-settings', 'Settings']]) {
+            const control = document.getElementById(id);
+            const text = document.createElement('span');
+            text.textContent = label;
+            control.append(text);
+            utilities.append(control);
+        }
+        document.getElementById('sidebar').append(utilities);
+        document.querySelector('#course-directory .search-container').append(document.getElementById('collapse-all-btn'));
+        document.querySelector('.home-header-actions')?.remove();
+        document.querySelector('.home-stats').hidden = true;
+        const appDownload = document.getElementById('android-download-link');
+        const homeFooter = document.createElement('footer');
+        homeFooter.className = 'library-footer';
+        homeFooter.append(appDownload);
+        elements.homeView.append(homeFooter);
+        document.getElementById('library-search-launch').addEventListener('click', openSpotlight);
+        courseBrowser = DanceCourseBrowser.init({
+            catalog, present: coursePresentation, sortFolders,
+            currentPath: () => {
+                if (document.body.dataset.view === 'video') {
+                    const video = catalog.find(state.currentVideo?.path);
+                    return video ? [video.category, ...video.folderSegments] : [];
+                }
+                return document.body.dataset.view === 'home' ? state.folderPath : [];
+            },
+            onOpen: () => pauseVideoPlayback(),
+            onNavigate: path => {
+                if (usesCompactLayout()) setSidebarOpen(false, { restoreFocus: false });
+                showLibraryHome(true, path);
+            },
+            suppressFocusReturn: suppressDialogFocusReturn
+        });
+        const styleNavigation = document.getElementById('style-navigation');
+        for (const category of catalog.categories) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.dataset.styleName = category;
+            const name = document.createElement('span');
+            name.className = 'style-navigation-name';
+            name.textContent = category;
+            const count = document.createElement('span');
+            count.className = 'style-navigation-count';
+            count.textContent = String(catalog.folder([category]).count);
+            count.setAttribute('aria-label', `${count.textContent} lessons`);
+            button.append(name, count);
+            button.addEventListener('click', () => {
+                showLibraryHome(true, [category]);
+                if (usesCompactLayout()) setSidebarOpen(false, { restoreFocus: false });
+            });
+            styleNavigation.append(button);
+        }
+        document.querySelector('.skip-link').addEventListener('click', event => {
+            event.preventDefault();
+            elements.mainContent.tabIndex = -1;
+            elements.mainContent.focus();
+        });
+        document.getElementById('workspace-lesson-header').appendChild(document.getElementById('video-header-container'));
+        elements.mainContent.appendChild(notesView);
+        notesView.setAttribute('role', 'region');
+        notesView.removeAttribute('aria-modal');
+        notesView.removeAttribute('aria-hidden');
+        document.getElementById('notes-dialog-title').tabIndex = -1;
+        for (const [id, handler] of [['nav-library', showLibraryHome], ['nav-notebook', showNotesView], ['nav-queue', showQueueView]]) {
+            document.getElementById(id).addEventListener('click', () => { handler(); if (usesCompactLayout()) setSidebarOpen(false, { restoreFocus: false }); });
+        }
+        document.querySelectorAll('[data-workspace-view]').forEach(button => button.addEventListener('click', () => {
+            const view = button.dataset.workspaceView;
+            if (view === 'notes') showNotesView();
+            else if (view === 'queue') showQueueView();
+            else showLibraryHome();
+        }));
+        workspace = DanceLibraryWorkspace.create({
+            repository, catalog,
+            getCurrentVideo: () => state.currentVideo,
+            getVideoElement: () => elements.videoPlayer,
+            openVideo: (path, options) => { const video = resolveVideoObj(path); if (video) loadVideo(video, options); },
+            showHome: () => showLibraryHome(), showNotes: showNotesView, showQueue: showQueueView,
+            getLoop: () => ({ start: state.loopA, end: state.loopB }),
+            getSpeed: () => state.playbackSpeed,
+            setLoop: playSavedSegment, showToast,
+            onPracticeChange: data => {
+                state.completed = data.completed;
+                document.querySelectorAll('.video-link').forEach(link => link.classList.toggle('completed', Object.hasOwn(data.completed, link.dataset.path)));
+                updateNotesBadge();
+                if (document.body.dataset.view === 'home') refreshHomeTiles();
+            }
+        });
+        repository.subscribe(event => {
+            if (event.source !== 'storage') return;
+            state.favorites = new Set(safeLoad('favoriteVideos', []));
+            state.watched = new Set(safeLoad('watchedVideos', []));
+            state.lastWatched = safeLoad('videoLastWatched', {});
+            updateFavBtn();
+            updateNotesBadge();
+            if (!playerNoteEdit && state.currentVideo) renderBookmarks();
+            if (document.body.dataset.view === 'notes' && !notesContent.querySelector('.is-editing')) renderNotesView();
+            if (document.body.dataset.view === 'home') refreshHomeTiles();
+            document.querySelectorAll('.sidebar-fav-star').forEach(button => {
+                const path = button.closest('[data-path]')?.dataset.path;
+                const favorite = state.favorites.has(path);
+                button.setAttribute('aria-pressed', String(favorite));
+                button.classList.toggle('active', favorite);
+                button.innerHTML = favorite ? '&#9733;' : '&#9734;';
+            });
+        });
+    }
+    function refreshHomeTiles() {
+        renderHomeTiles(state.folderPath.length ? catalog.folder(state.folderPath) : null, state.folderPath);
     }
 
     // Render Sidebar Navigation
@@ -803,14 +1006,12 @@ document.addEventListener('DOMContentLoaded', () => {
         
         for (const folderName of folderNames) {
             const node = foldersObj[folderName];
-            const folderDisplayName = depth === 1 ? displayCourseName(folderName) : folderName;
             
             if (countVideos(node) === 0) continue; // Skip empty folders entirely
             
             const groupDiv = document.createElement('div');
             groupDiv.className = 'nav-group';
             groupDiv.dataset.folderName = folderName;
-            groupDiv.dataset.searchText = `${folderName} ${folderDisplayName}`.toLowerCase();
 
             const headerBtn = document.createElement('div');
             headerBtn.className = 'nav-header';
@@ -829,10 +1030,10 @@ document.addEventListener('DOMContentLoaded', () => {
             headerBtn.innerHTML = `
                 <button type="button" class="nav-folder-toggle">
                     ${iconSvg}
-                    <span style="word-break: break-word; line-height: 1.3; font-size: 0.95em; padding-right: 8px;">${escapeHtml(folderDisplayName)}</span>
+                    <span style="word-break: break-word; line-height: 1.3; font-size: 0.95em; padding-right: 8px;">${escapeHtml(folderName)}</span>
                     <svg class="chevron" viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>
                 </button>
-                <button type="button" class="open-tiles-btn" title="Open in tile view" aria-label="Open ${escapeHtml(folderDisplayName)} in tile view">
+                <button type="button" class="open-tiles-btn" title="Open in tile view" aria-label="Open ${escapeHtml(folderName)} in tile view">
                     ${gridIconSvg}
                 </button>
             `;
@@ -844,7 +1045,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const folderToggle = headerBtn.querySelector('.nav-folder-toggle');
             folderToggle.setAttribute('aria-controls', contentDiv.id);
             folderToggle.setAttribute('aria-expanded', 'false');
-            folderToggle.setAttribute('aria-label', `Expand or collapse ${folderDisplayName}`);
+            folderToggle.setAttribute('aria-label', `Expand or collapse ${folderName}`);
             
             const fullPath = [...currentPath, folderName];
             
@@ -861,14 +1062,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 node.videos.forEach(video => {
                     const link = document.createElement('div');
                     link.className = `video-link ${state.watched.has(video.path) ? 'watched' : ''}`;
+                    link.classList.toggle('completed', Object.hasOwn(state.completed, video.path));
                     link.style.setProperty('--depth', depth); link.style.paddingLeft = `calc(32px + (var(--depth) * 10px))`;
 
                     const mainButton = document.createElement('button');
                     mainButton.type = 'button';
                     mainButton.className = 'video-link-main';
-                    mainButton.setAttribute('aria-label', lessonIsUnavailable(video)
-                        ? `Open ${video.title}; correct source unavailable`
-                        : `Play ${video.title}`);
+                    mainButton.setAttribute('aria-label', `Play ${video.title}`);
 
                     const titleSpan = document.createElement('span');
                     titleSpan.className = 'video-link-title';
@@ -882,36 +1082,18 @@ document.addEventListener('DOMContentLoaded', () => {
                     starBtn.setAttribute('aria-pressed', String(state.favorites.has(video.path)));
                     starBtn.innerHTML = state.favorites.has(video.path) ? '&#9733;' : '&#9734;';
                     if (state.favorites.has(video.path)) starBtn.classList.add('active');
-                    starBtn.addEventListener('click', (e) => {
-                        e.stopPropagation();
-                        e.preventDefault();
-                        if (state.favorites.has(video.path)) {
-                            state.favorites.delete(video.path);
-                            starBtn.innerHTML = '&#9734;';
-                            starBtn.classList.remove('active');
-                            starBtn.title = 'Favorite';
-                            starBtn.setAttribute('aria-pressed', 'false');
-                        } else {
-                            state.favorites.add(video.path);
-                            starBtn.innerHTML = '&#9733;';
-                            starBtn.classList.add('active');
-                            starBtn.title = 'Unfavorite';
-                            starBtn.setAttribute('aria-pressed', 'true');
-                        }
+                    starBtn.addEventListener('click', async (e) => {
+                        e.stopPropagation(); e.preventDefault();
+                        if (!await toggleFavorite(video.path)) return;
+                        const favorite = state.favorites.has(video.path);
+                        starBtn.innerHTML = favorite ? '&#9733;' : '&#9734;';
+                        starBtn.classList.toggle('active', favorite);
+                        starBtn.title = favorite ? 'Unfavorite' : 'Favorite';
+                        starBtn.setAttribute('aria-pressed', String(favorite));
                         starBtn.setAttribute('aria-label', starBtn.title + ' ' + video.title);
-                        safeStore('favoriteVideos', JSON.stringify([...state.favorites]));
-                        updateNotesBadge();
-                        // Update fav button if this is the current video
-                        if (state.currentVideo && state.currentVideo.path === video.path) updateFavBtn();
                     });
 
                     mainButton.appendChild(titleSpan);
-                    if (lessonIsUnavailable(video)) {
-                        const statusBadge = document.createElement('span');
-                        statusBadge.className = 'lesson-status-badge';
-                        statusBadge.textContent = 'Source unavailable';
-                        mainButton.appendChild(statusBadge);
-                    }
                     link.appendChild(mainButton);
                     link.appendChild(starBtn);
                     link.dataset.path = video.path;
@@ -961,7 +1143,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 // Render Tiles for this specific folder!
                 renderHomeTiles(node, fullPath);
-                setHomeRoute();
+                setFolderRoute(state.folderPath);
                 focusHomeHeading();
                 scrollMainToTop();
                 
@@ -1004,6 +1186,12 @@ document.addEventListener('DOMContentLoaded', () => {
             if (Array.isArray(arr)) total += arr.length;
         }
 
+        const reflectionCount = Object.values(safeLoad('practiceData', DanceLibraryStore.emptyPracticeData()).reflections || {}).filter(value => value.text.trim()).length;
+        total += reflectionCount;
+        const notebookCount = document.getElementById('nav-note-count');
+        notebookCount.textContent = String(total);
+        notebookCount.hidden = total === 0;
+        notebookCount.setAttribute('aria-label', `${total} ${total === 1 ? 'notebook entry' : 'notebook entries'}`);
         const lastSeen = parseInt(safeGet('notesBadgeSeen', '0'), 10);
         const unseen = Math.max(0, total - lastSeen);
 
@@ -1036,6 +1224,7 @@ document.addEventListener('DOMContentLoaded', () => {
         for (const arr of Object.values(allBookmarks)) {
             if (Array.isArray(arr)) total += arr.length;
         }
+        total += Object.values(safeLoad('practiceData', DanceLibraryStore.emptyPracticeData()).reflections || {}).filter(value => value.text.trim()).length;
         safeStore('notesBadgeSeen', total.toString());
         updateNotesBadge();
     }
@@ -1050,6 +1239,29 @@ document.addEventListener('DOMContentLoaded', () => {
             path = [];
         }
 
+        state.folderPath = [...path];
+        elements.homeView.dataset.folderView = String(path.length > 0);
+        const presentation = path.length === 2 ? coursePresentation(path[1], path[0]) : null;
+        document.getElementById('home-title').textContent = presentation?.title || path.at(-1) || 'Make time to dance.';
+        const courseContext = document.getElementById('course-context');
+        courseContext.replaceChildren();
+        courseContext.hidden = !presentation || (!presentation.teacher && !presentation.level);
+        if (presentation) {
+            const teacher = document.createElement('span');
+            teacher.textContent = presentation.teacher;
+            courseContext.append(teacher);
+            if (presentation.level) {
+                const level = document.createElement('span');
+                level.className = 'course-level';
+                level.textContent = presentation.level;
+                courseContext.append(level);
+            }
+        }
+        if (document.body.dataset.view === 'home') setFolderRoute(path);
+        updateWorkspaceNavigation(document.body.dataset.view);
+        document.getElementById('practice-overview').hidden = path.length > 0;
+        document.getElementById('library-section-title').textContent = path.length ? (folderNode.videos.length ? 'Lessons' : path.length === 1 ? 'Choose a course' : 'Choose a section') : 'Explore the library';
+        document.getElementById('library-section-detail').textContent = path.length ? countVideos(folderNode) + ' lessons · Practice at your own pace' : 'Choose a style to find your next lesson';
         elements.courseGrid.innerHTML = '';
 
         // Render Breadcrumbs for Home View
@@ -1076,7 +1288,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (idx === path.length - 1) {
                 const current = document.createElement('span');
                 current.style.color = 'var(--text-main)';
-                current.textContent = displayBrowsePathSegment(p, idx);
+                current.textContent = idx === 1 ? coursePresentation(p, path[0]).title : p;
                 homeHeader.appendChild(current);
             } else {
                 const crumb = document.createElement('a');
@@ -1085,7 +1297,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 crumb.dataset.level = String(idx);
                 crumb.style.color = 'var(--accent)';
                 crumb.style.textDecoration = 'none';
-                crumb.textContent = displayBrowsePathSegment(p, idx);
+                crumb.textContent = idx === 1 ? coursePresentation(p, path[0]).title : p;
                 homeHeader.appendChild(crumb);
             }
         });
@@ -1173,19 +1385,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 const isCollapsed = wrapper.classList.toggle('collapsed');
                 header.setAttribute('aria-expanded', String(!isCollapsed));
                 header.querySelector('.section-toggle-arrow').innerHTML = isCollapsed ? '&#9654;' : '&#9660;';
-                const saved = safeLoad('collapsedSections', {});
-                saved[id] = isCollapsed;
-                safeStore('collapsedSections', JSON.stringify(saved));
+                void repository.update('collapsedSections', {}, saved => ({ ...saved, [id]: isCollapsed }), storageValidators.collapsedSections).then(reportSaveFailure);
             });
 
             const content = document.createElement('div');
             content.className = 'home-section-content';
             content.id = `home-section-${id}`;
             header.setAttribute('aria-controls', content.id);
-            content.style.display = collapsed ? 'none' : 'contents';
+            content.style.display = collapsed ? 'none' : 'grid';
 
             header.addEventListener('click', () => {
-                content.style.display = wrapper.classList.contains('collapsed') ? 'none' : 'contents';
+                content.style.display = wrapper.classList.contains('collapsed') ? 'none' : 'grid';
             });
 
             wrapper.appendChild(header);
@@ -1228,22 +1438,15 @@ document.addEventListener('DOMContentLoaded', () => {
                         </button>
                         <button type="button" class="tile-fav-toggle" data-path="${escapeHtml(favPath)}" title="${isRemoved ? 'Re-favorite' : 'Unfavorite'}">${isRemoved ? 'Re-favorite' : 'Unfavorite'}</button>
                     </div>
-                    <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: auto; opacity: 0.7;">${escapeHtml(formatVideoFolderPath(parts))}</p>
+                    <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: auto; opacity: 0.7;">${escapeHtml(parts.join(' / '))}</p>
                 `;
                 tile.querySelector('.tile-main-btn').addEventListener('click', () => loadVideo(videoObj));
                 // Toggle button
-                tile.querySelector('.tile-fav-toggle').addEventListener('click', (e) => {
+                tile.querySelector('.tile-fav-toggle').addEventListener('click', async (e) => {
                     e.stopPropagation();
-                    if (tilePendingUnfavs.has(favPath)) {
-                        tilePendingUnfavs.delete(favPath);
-                        state.favorites.add(favPath);
-                    } else {
-                        tilePendingUnfavs.add(favPath);
-                        state.favorites.delete(favPath);
-                    }
-                    safeStore('favoriteVideos', JSON.stringify([...state.favorites]));
-                    updateNotesBadge();
-                    renderHomeTiles(folderNode, path);
+                    if (!await toggleFavorite(favPath)) return;
+                    if (state.favorites.has(favPath)) tilePendingUnfavs.delete(favPath); else tilePendingUnfavs.add(favPath);
+                    refreshHomeTiles();
                 });
                 favContent.appendChild(tile);
             }
@@ -1265,7 +1468,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 .slice(0, 8);
 
             if (resumeEntries.length > 0) {
-                const { wrapper: cwWrapper, content: cwContent } = createCollapsibleSection('continue-watching', '&#9654;', 'Continue Watching');
+                const { wrapper: cwWrapper, content: cwContent } = createCollapsibleSection('continue-watching', '&#9654;', 'Recent lessons');
                 elements.courseGrid.appendChild(cwWrapper);
 
                 for (const entry of resumeEntries) {
@@ -1288,7 +1491,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             <h3 class="video-tile-title" style="margin-bottom: 0; color: var(--text-main); font-weight: normal; line-height: 1.4;">${escapeHtml(title)}</h3>
                         </div>
                         <p style="font-size: 0.75rem; color: var(--text-muted); margin: 4px 0 0 0;">at ${formatTime(entry.time)}${agoText ? ' · ' + agoText : ''}</p>
-                        <p style="font-size: 0.7rem; color: var(--text-muted); margin-top: 4px; opacity: 0.7;">${escapeHtml(formatVideoFolderPath(parts))}</p>
+                        <p style="font-size: 0.7rem; color: var(--text-muted); margin-top: 4px; opacity: 0.7;">${escapeHtml(parts.join(' / '))}</p>
                     `;
                     tile.addEventListener('click', () => loadVideo(videoObj));
                     makeKeyboardAccessible(tile, () => loadVideo(videoObj), `Resume ${title} from ${formatTime(entry.time)}`);
@@ -1315,11 +1518,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     const parts = vPath.split('/');
                     parts.pop();
                     const title = titleForVideo(vPath, videoData[vPath]);
-                    notedVideos.push({ path: vPath, title, folder: formatVideoFolderPath(parts), notes: withNotes });
+                    notedVideos.push({ path: vPath, title, folder: parts.join(' / '), notes: withNotes });
                 }
             }
             if (notedVideos.length > 0) {
-                notedVideos.sort((a, b) => b.notes.length - a.notes.length);
+                notedVideos.sort((a, b) => Math.max(...b.notes.map(note => note.ts || 0)) - Math.max(...a.notes.map(note => note.ts || 0)));
                 const { wrapper: notesWrapper, content: notesContent } = createCollapsibleSection('recent-notes', '&#128221;', 'Recent Notes');
                 elements.courseGrid.appendChild(notesWrapper);
 
@@ -1384,7 +1587,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const subfolders = sortFolders(Object.keys(folderNode.subfolders), path.length === 0);
         for (const fName of subfolders) {
             const node = folderNode.subfolders[fName];
-            const folderDisplayName = path.length === 1 ? displayCourseName(fName) : fName;
             tileIndex++;
             const numVideos = countVideos(node);
             if (numVideos === 0) continue;
@@ -1395,7 +1597,8 @@ document.addEventListener('DOMContentLoaded', () => {
             // Style color: at root the folder IS the style, inside a style path[0] is the style
             const tileStyle = path.length === 0 ? fName : path[0];
             const tileColor = styleColors[tileStyle] || styleColors["Other"];
-            tile.style.borderLeft = `3px solid ${tileColor}`;
+            tile.style.setProperty('--course-color', tileColor);
+            tile.classList.toggle('style-tile', path.length === 0);
             const watchedCount = countWatchedInFolder(node);
             const pct = numVideos > 0 ? Math.round(watchedCount / numVideos * 100) : 0;
             // Check for Salsa Masterclass week/move descriptions
@@ -1413,15 +1616,21 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 }
             }
+            const display = path.length === 1 ? coursePresentation(fName, path[0])
+                : { title: fName, teacher: '', level: '' };
+            const courseCount = Object.keys(node.subfolders).length;
+            const countText = path.length === 0 && courseCount
+                ? `${courseCount} ${courseCount === 1 ? 'course' : 'courses'} · ${numVideos} lessons`
+                : `${numVideos} lessons`;
             tile.innerHTML = `
-                <div style="display: flex; align-items: flex-start; margin-bottom: 2px;">
-                    <svg viewBox="0 0 24 24" width="28" height="28" stroke="${tileColor}" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="margin-right:12px; min-width:28px"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
-                    <h3 style="margin-bottom: 0; color: var(--text-main); word-break: break-word; margin-top: 3px;">${escapeHtml(folderDisplayName)}</h3>
-                </div>
+                <div class="course-tile-topline"><span class="course-kind">${path.length === 0 ? 'Dance style' : path.length === 1 ? 'Course' : 'Section'}</span>
+                  ${display.level ? `<span class="course-level">${escapeHtml(display.level)}</span>` : '<span class="course-arrow" aria-hidden="true">→</span>'}</div>
+                <h3>${escapeHtml(display.title)}</h3>
+                ${display.teacher ? `<p class="course-teacher">${escapeHtml(display.teacher)}</p>` : ''}
                 ${tileSubtitle}
                 <div class="tile-progress-area">
-                    <p class="tile-count" style="color: var(--text-muted);">${watchedCount}/${numVideos} watched</p>
-                    <div class="tile-progress-track"><div class="tile-progress-fill" style="width: ${pct}%"></div></div>
+                    <p class="tile-count">${countText}${watchedCount ? ` · ${watchedCount} completed` : ''}</p>
+                    ${watchedCount ? `<div class="tile-progress-track" aria-hidden="true"><div class="tile-progress-fill" style="width:${pct}%"></div></div>` : ''}
                 </div>
             `;
             tile.addEventListener('click', () => {
@@ -1429,10 +1638,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 scrollMainToTop();
                 focusHomeHeading();
                 
-                const group = revealNavigationPath([...path, fName]);
-                group?.scrollIntoView({ behavior: preferredScrollBehavior(), block: 'center' });
+                revealNavigationPath([...path, fName]);
             });
-            makeKeyboardAccessible(tile, () => tile.click(), `Open ${folderDisplayName}, ${numVideos} lessons`);
+            makeKeyboardAccessible(tile, () => tile.click(), `Open ${fName}, ${numVideos} lessons`);
             elements.courseGrid.appendChild(tile);
         }
         
@@ -1444,10 +1652,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 const tile = document.createElement('div');
                 tile.className = 'course-tile lesson-tile';
             tile.style.animationDelay = `${Math.min(tileIndex, 6) * 0.035}s`;
-                tile.style.backgroundColor = 'var(--bg-base)';
-                const vidStyle = path[0] || 'Other';
-                const vidColor = styleColors[vidStyle] || styleColors["Other"];
-                tile.style.borderLeft = `3px solid ${vidColor}`;
                 if(state.watched.has(video.path)) {
                     tile.classList.add('watched-tile');
                 }
@@ -1456,30 +1660,29 @@ document.addEventListener('DOMContentLoaded', () => {
                 const watchedAgo = watchedAt ? timeAgo(watchedAt) : '';
                 tile.innerHTML = `
                     <div class="tile-action-row">
-                        <button type="button" class="tile-main-btn" aria-label="${lessonIsUnavailable(video) ? 'Open' : 'Play'} ${escapeHtml(video.title)}${lessonIsUnavailable(video) ? '; correct source unavailable' : ''}">
+                        <button type="button" class="tile-main-btn" aria-label="Play ${escapeHtml(video.title)}">
                             <svg viewBox="0 0 24 24" width="20" height="20" stroke="var(--text-muted)" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-                            <span class="video-tile-title">${escapeHtml(video.title)}${lessonIsUnavailable(video) ? '<span class="lesson-status-badge">Source unavailable</span>' : ''}</span>
+                            <span class="video-tile-title">${escapeHtml(video.title)}</span>
                         </button>
                         <button type="button" class="tile-star-btn${isFav ? ' tile-star-active' : ''}" data-path="${escapeHtml(video.path)}" title="${isFav ? 'Remove from favorites' : 'Add to favorites'}" aria-label="${isFav ? 'Remove from favorites' : 'Add to favorites'}: ${escapeHtml(video.title)}" aria-pressed="${isFav}">
                             <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="${isFav ? 'currentColor' : 'none'}" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
                         </button>
                     </div>
-                    ${watchedAgo ? '<p class="tile-watched-ago">' + watchedAgo + '</p>' : ''}
+                    ${Object.hasOwn(state.completed, video.path) ? '<p class="lesson-completion-label">✓ Completed</p>' : ''}
+                    ${watchedAgo ? '<p class="tile-watched-ago">Viewed ' + watchedAgo + '</p>' : ''}
                 `;
                 tile.querySelector('.tile-main-btn').addEventListener('click', () => loadVideo(video));
-                tile.querySelector('.tile-star-btn').addEventListener('click', (e) => {
+                tile.querySelector('.tile-star-btn').addEventListener('click', async (e) => {
                     e.stopPropagation();
-                    if (state.favorites.has(video.path)) {
-                        state.favorites.delete(video.path);
-                    } else {
-                        state.favorites.add(video.path);
-                    }
-                    safeStore('favoriteVideos', JSON.stringify([...state.favorites]));
-                    updateNotesBadge();
-                    renderHomeTiles(folderNode, path);
+                    if (await toggleFavorite(video.path)) renderHomeTiles(folderNode, path);
                 });
                 elements.courseGrid.appendChild(tile);
             }
+        }
+        // Keep reading and keyboard order aligned with the catalog-first layout.
+        if (path.length === 0) {
+            elements.courseGrid.querySelectorAll(':scope > .home-section-wrapper, :scope > .favorites-divider')
+                .forEach(section => elements.courseGrid.appendChild(section));
         }
     }
 
@@ -1530,6 +1733,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function ensureSummaryForVideo(videoObj) {
+        if (lessonIsUnavailable(videoObj)) return '';
         if (typeof videoObj.summary === 'string') return videoObj.summary;
         const catalogInfo = videoData[videoObj.path];
         if (!catalogInfo?.summary_chunk) return '';
@@ -1577,16 +1781,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function renderVideoSummary(videoObj) {
+        const courseLead = buildCourseSummaryLead(videoObj);
         if (lessonIsUnavailable(videoObj)) {
-            elements.videoSummary.innerHTML = `
-                <section class="lesson-availability-notice" role="alert">
-                    <h2>Why this lesson is unavailable</h2>
-                    <p>${escapeHtml(videoObj.availability_reason || 'The correct source video has not been recovered yet.')}</p>
-                </section>
-            `;
+            elements.videoSummary.innerHTML = '<p class="lesson-availability-notice">The guide is withheld because the available recording belongs to a different lesson. Your personal notes are kept separately.</p>';
             return;
         }
-        const courseLead = buildCourseSummaryLead(videoObj);
         elements.videoSummary.innerHTML = `${courseLead}<div class="summary-loading" role="status"><span class="summary-loading-dot" aria-hidden="true"></span>Loading lesson analysis…</div>`;
 
         try {
@@ -1606,6 +1805,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Load and Play Video
     function loadVideo(videoObj, options = {}) {
+        if (pendingSegmentCleanup) pendingSegmentCleanup();
         if (pendingSeekCleanup) {
             pendingSeekCleanup();
             pendingSeekCleanup = null;
@@ -1616,7 +1816,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (state.currentVideo) saveCurrentPosition();
         state.currentVideo = videoObj;
         const requestedSeek = Number(options.seekTime);
-        if (Number.isFinite(requestedSeek) && requestedSeek >= 0) {
+        if (!lessonIsUnavailable(videoObj) && Number.isFinite(requestedSeek) && requestedSeek >= 0) {
             skipNextResume = true;
             preparePendingSeek(videoObj.path, requestedSeek);
         }
@@ -1663,10 +1863,11 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.homeView.style.display = 'none';
         closeNotesView({ restoreFocus: false });
         document.body.dataset.view = 'video';
-        elements.videoView.style.display = 'flex';
+        updateWorkspaceNavigation('video');
+        elements.videoView.style.display = 'grid';
 
         // Update URL/Video Source
-        updateVideoSource({ autoplay: true });
+        updateVideoSource({ autoplay: options.autoplay !== false });
 
         // Update Info
         elements.videoTitle.innerText = videoObj.title;
@@ -1676,10 +1877,9 @@ document.addEventListener('DOMContentLoaded', () => {
         // Update favorite star
         updateFavBtn();
 
-        // An unavailable source keeps its stable notes/favorite identity, but it cannot create timed bookmarks.
-        const unavailableLesson = lessonIsUnavailable(videoObj);
-        elements.bookmarksBar.style.display = unavailableLesson ? 'none' : 'block';
-        if (!unavailableLesson) renderBookmarks();
+        // Show bookmarks
+        elements.bookmarksBar.style.display = 'block';
+        renderBookmarks();
         
         // Generate breadcrumbs for video view: Folder1 / Folder2 / filename
         // Create a copy of pathParts because we need the raw path for rendering Home Tiles later
@@ -1718,7 +1918,9 @@ document.addEventListener('DOMContentLoaded', () => {
             crumb.style.color = 'var(--text-main)';
             crumb.style.textDecoration = 'none';
             crumb.style.transition = 'color 0.2s';
-            crumb.textContent = displayBrowsePathSegment(part, index);
+            const display = index === 1 ? coursePresentation(part, fullPathForBreadcrumb[0]) : null;
+            crumb.textContent = display ? [display.title, display.level].filter(Boolean).join(' · ') : part;
+            crumb.title = part;
             elements.videoBreadcrumb.appendChild(crumb);
             breadcrumbCount += 1;
         });
@@ -1762,7 +1964,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     renderHomeTiles(targetNode, [styleName, ...pathData]);
                 }
                 focusHomeHeading();
-                setHomeRoute();
+                setFolderRoute(state.folderPath);
                 
                 scrollMainToTop();
             });
@@ -1783,21 +1985,20 @@ document.addEventListener('DOMContentLoaded', () => {
             activeLink.querySelector('.video-link-main')?.setAttribute('aria-current', 'page');
         }
 
-        if (!unavailableLesson) {
-            // Mark only playable lessons as watched.
+        // Mark as watched
+        if (!lessonIsUnavailable(videoObj)) {
             state.watched.add(videoObj.path);
-            safeStore('watchedVideos', JSON.stringify([...state.watched]));
+            saveViewed(videoObj.path, Date.now());
             if (activeLink) activeLink.classList.add('watched');
-
             state.lastWatched[videoObj.path] = Date.now();
-            safeStore('videoLastWatched', JSON.stringify(state.lastWatched));
         }
         updateHomeStats();
-        if (options.updateHistory !== false) setVideoRoute(videoObj.path);
+        if (options.updateHistory !== false) setVideoRoute(videoObj.path, false, options.seekTime);
+        workspace?.lessonChanged();
 
         // Scroll to top
         elements.videoView.scrollIntoView({ behavior: preferredScrollBehavior(), block: 'start' });
-        requestAnimationFrame(() => elements.videoTitle.focus({ preventScroll: true }));
+        if (options.focus !== false) requestAnimationFrame(() => (theaterMode ? theaterBtn : elements.videoTitle).focus({ preventScroll: true }));
 
         // Mobile: close sidebar
         if (usesCompactLayout()) {
@@ -1807,6 +2008,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     // Source sessions keep delayed mobile/HLS callbacks from touching a newer lesson.
+    function lessonIsUnavailable(videoObj) { return videoObj?.availability === 'unavailable'; }
     let videoSourceRequest = 0;
     let activeSourceCleanup = null;
     let activeSourcePath = null;
@@ -1869,6 +2071,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function requestVideoPlayback(reason) {
+        if (lessonIsUnavailable(state.currentVideo)) return;
         playbackIntent = true;
         return attemptVideoPlayback(reason);
     }
@@ -1885,32 +2088,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function lessonIsUnavailable(videoObj) {
-        return videoObj?.availability === 'unavailable';
-    }
-
-    function configureLessonMediaAvailability(videoObj) {
-        const unavailable = lessonIsUnavailable(videoObj);
-        elements.videoPlayer.hidden = unavailable;
-        elements.videoUnavailable.hidden = !unavailable;
-        elements.videoControlsBar.hidden = unavailable;
-        elements.addBookmarkBtn.disabled = unavailable;
-        elements.playerContainer.classList.toggle('has-unavailable-media', unavailable);
-        if (!unavailable) {
-            elements.videoUnavailableReason.textContent = '';
-            return true;
-        }
-
-        pauseVideoPlayback({ destroyStream: true, skipSave: true });
-        setPlaybackState('unavailable');
-        elements.videoUnavailableReason.textContent = videoObj.availability_reason
-            || 'This lesson is unavailable until its correct source video is recovered.';
-        return false;
-    }
-
     async function updateVideoSource(options = {}) {
         if (!state.currentVideo) return;
-        if (!configureLessonMediaAvailability(state.currentVideo)) return;
 
         const requestedVideo = state.currentVideo;
         const video = elements.videoPlayer;
@@ -1929,6 +2108,20 @@ document.addEventListener('DOMContentLoaded', () => {
         video.pause();
         video.removeAttribute('src');
         video.load();
+
+        const unavailable = lessonIsUnavailable(requestedVideo);
+        video.hidden = unavailable;
+        document.getElementById('video-unavailable').hidden = !unavailable;
+        document.querySelector('.video-controls-bar').hidden = unavailable;
+        elements.addBookmarkBtn.disabled = unavailable;
+        elements.playerContainer.classList.toggle('has-unavailable-media', unavailable);
+        if (unavailable) {
+            playbackIntent = false;
+            setTheaterMode(false, { restoreFocus: false });
+            setPlaybackState('unavailable');
+            document.getElementById('video-unavailable-reason').textContent = requestedVideo.availability_reason || 'The correct recording has not been recovered yet.';
+            return;
+        }
 
         function attachReadyAndErrorHandlers(sourceLabel) {
             const onReady = () => {
@@ -2154,6 +2347,19 @@ document.addEventListener('DOMContentLoaded', () => {
         video.addEventListener('error', onError);
         pendingSeekCleanup = cleanup;
     }
+    function seekCurrentLesson(time, play = false) {
+        if (!state.currentVideo || lessonIsUnavailable(state.currentVideo) || !Number.isFinite(time) || time < 0) return;
+        clearABLoop();
+        if (pendingSeekCleanup) pendingSeekCleanup();
+        skipNextResume = false;
+        const video = elements.videoPlayer;
+        if (video.readyState >= 1 && Number.isFinite(video.duration)) video.currentTime = playbackCore.clampSeekTime(time, video.duration);
+        else {
+            skipNextResume = true;
+            preparePendingSeek(state.currentVideo.path, time);
+        }
+        if (play) requestVideoPlayback('practice timestamp');
+    }
     function tryResumePosition() {
         if (skipNextResume) { skipNextResume = false; return; }
         if (!state.currentVideo) return;
@@ -2167,8 +2373,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (resumeTime === null) {
             // Old uploads, imported backups, and near-finished lessons can leave an
             // invalid timestamp that would otherwise seek straight to the end.
-            delete positions[state.currentVideo.path];
-            safeStore('videoPositions', JSON.stringify(positions));
+            savePosition(state.currentVideo.path, null);
             return;
         }
 
@@ -2206,24 +2411,18 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function saveCurrentPosition() {
-        if (!state.currentVideo || !elements.videoPlayer) return;
-        const v = elements.videoPlayer;
-        const t = Number(v.currentTime || 0);
-        const d = Number(v.duration || 0);
+        if (!state.currentVideo || lessonIsUnavailable(state.currentVideo) || !elements.videoPlayer) return;
+        const path = state.currentVideo.path;
+        const t = Number(elements.videoPlayer.currentTime || 0);
+        const d = Number(elements.videoPlayer.duration || 0);
         if (!Number.isFinite(t) || t < 1) return;
-
-        if (!Number.isFinite(d) || d === 0 || t < d - 5) {
-            const positions = safeLoad('videoPositions', {});
-            positions[state.currentVideo.path] = Math.floor(t);
-            safeStore('videoPositions', JSON.stringify(positions));
-        }
-
-        state.lastWatched[state.currentVideo.path] = Date.now();
-        safeStore('videoLastWatched', JSON.stringify(state.lastWatched));
+        if (!Number.isFinite(d) || d === 0 || t < d - 5) savePosition(path, Math.floor(t));
+        state.lastWatched[path] = Date.now();
+        saveViewed(path, state.lastWatched[path]);
     }
 
     function pauseVideoPlayback(options = {}) {
-        if (!options.skipSave) saveCurrentPosition();
+        saveCurrentPosition();
         playbackIntent = false;
         expectedResetPauses = 0;
         if (options.destroyStream) {
@@ -2239,14 +2438,18 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function clearWatchHistoryData() {
-        state.watched.clear();
-        state.lastWatched = {};
-        safeRemove('watchedVideos');
-        safeRemove('videoLastWatched');
-        safeRemove('videoPositions');
+    async function clearWatchHistoryData() {
+        const result = await repository.transact({
+            watchedVideos: { fallback: [], validate: storageValidators.watchedVideos },
+            videoLastWatched: { fallback: {}, validate: storageValidators.videoLastWatched },
+            videoPositions: { fallback: {}, validate: storageValidators.videoPositions }
+        }, () => ({ watchedVideos: [], videoLastWatched: {}, videoPositions: {} }));
+        if (reportSaveFailure(result)) return;
+        state.watched.clear(); state.lastWatched = {};
         renderNavigation();
-        if (elements.homeView && elements.homeView.style.display !== 'none') renderHomeTiles(null, []);
+        if (document.body.dataset.view === 'home') refreshHomeTiles();
+        workspace?.render();
+        return true;
     }
 
     // Clear saved position when video finishes
@@ -2254,9 +2457,7 @@ document.addEventListener('DOMContentLoaded', () => {
         playbackIntent = false;
         setPlaybackState('ended');
         if (state.currentVideo) {
-            const positions = safeLoad('videoPositions', {});
-            delete positions[state.currentVideo.path];
-            safeStore('videoPositions', JSON.stringify(positions));
+            savePosition(state.currentVideo.path, null);
         }
     });
 
@@ -2325,12 +2526,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (chapters.length) {
-            const openByDefault = usesCompactLayout() ? '' : ' open';
             html += '<ol class="lesson-chapters">';
             for (const chapter of chapters) {
                 html += `<li class="lesson-chapter">
                     <button type="button" class="timestamp-pill" data-time="${chapter.totalSeconds}" aria-label="Jump to ${chapter.timeLabel}">${chapter.timeLabel}</button>
-                    <details class="chapter-details"${openByDefault}>
+                    <details class="chapter-details">
                         <summary><span class="chapter-title">${renderInline(chapter.title)}</span></summary>
                         ${chapter.description ? `<p class="chapter-description">${renderInline(chapter.description)}</p>` : ''}
                     </details>
@@ -2410,8 +2610,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const time = parseFloat(e.target.dataset.time);
                 
                 // Native HTML5 Video skipping works for both Local & HLS stream!
-                elements.videoPlayer.currentTime = time;
-                requestVideoPlayback('summary timestamp');
+                seekCurrentLesson(time, true);
                 
                 // Scroll up centered towards the video player
                 const wrapper = document.getElementById('video-sticky-wrapper');
@@ -2453,7 +2652,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
                 event.preventDefault();
                 openSpeedMenu();
-            } else if (event.key === 'Escape') {
+            } else if (event.key === 'Escape' && elements.currentSpeedBtn.getAttribute('aria-expanded') === 'true') {
                 event.stopPropagation();
                 closeSpeedMenu();
             }
@@ -2506,23 +2705,26 @@ document.addEventListener('DOMContentLoaded', () => {
             sidebarSearchTimeout = setTimeout(() => { sidebarSearchFilter(e.target.value); }, 150);
         });
         function sidebarSearchFilter(val) {
-            const query = val.trim().toLowerCase();
+            const query = val.trim();
             if (query) hydrateNavigationTree();
+            const matches = new Set(catalog.search(query).map(video => video.path));
+            document.querySelectorAll('.video-link').forEach(link => {
+                link.hidden = !matches.has(link.dataset.path);
+            });
             document.querySelectorAll('.nav-group').forEach(group => {
                 let hasVisibleMatch = false;
                 
                 // Check header
-                const headerText = `${group.querySelector('.nav-header').innerText} ${group.dataset.searchText || ''}`.toLowerCase();
+                const headerText = group.querySelector('.nav-header').innerText.toLowerCase();
                 
                 // Check links
                 const links = group.querySelectorAll('.video-link');
                 links.forEach(link => {
-                    const isMatch = link.innerText.toLowerCase().includes(query);
-                    link.hidden = !isMatch;
+                    const isMatch = !link.hidden;
                     if (isMatch) hasVisibleMatch = true;
                 });
 
-                if (headerText.includes(query) || hasVisibleMatch) {
+                if (!query || hasVisibleMatch) {
                     group.hidden = false;
                     hasVisibleMatch = true;
                 } else {
@@ -2557,6 +2759,9 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // Close sidebar when clicking outside on mobile
         document.addEventListener('click', (e) => {
+            // Dialog interactions have their own dismissal and focus behavior,
+            // including clicks on a Close button that just hid its dialog.
+            if (e.target instanceof Element && e.target.closest('[role="dialog"]')) return;
             if (usesCompactLayout()) {
                 if (elements.sidebar.classList.contains('open') && 
                     !elements.sidebar.contains(e.target) && 
@@ -2688,7 +2893,7 @@ document.addEventListener('DOMContentLoaded', () => {
         updateThemeCounter();
 
         // Favorite themes
-        const favThemes = new Set(safeLoad('favoriteThemes', []));
+        let favThemes = new Set(safeLoad('favoriteThemes', []));
         const favThemesRow = document.getElementById('fav-themes-row');
         themeFavBtn = document.getElementById('theme-fav-btn');
 
@@ -2738,24 +2943,23 @@ document.addEventListener('DOMContentLoaded', () => {
             themeFavBtn.setAttribute('aria-pressed', String(isFav));
         }
 
-        themeFavBtn.addEventListener('click', () => {
-            if (favThemes.has(state.theme)) {
-                favThemes.delete(state.theme);
-            } else {
-                favThemes.add(state.theme);
-            }
-            safeStore('favoriteThemes', JSON.stringify([...favThemes]));
+        themeFavBtn.addEventListener('click', async () => {
+            const theme = state.theme;
+            const result = await repository.update('favoriteThemes', [], values => values.includes(theme) ? values.filter(value => value !== theme) : [...values, theme], storageValidators.favoriteThemes);
+            if (reportSaveFailure(result)) return;
+            favThemes = new Set(result.value);
             updateThemeFavBtn();
             renderFavThemes();
         });
 
-        favThemesRow.addEventListener('click', (e) => {
+        favThemesRow.addEventListener('click', async (e) => {
             // Remove button
             const removeBtn = e.target.closest('.fav-theme-remove');
             if (removeBtn) {
                 e.stopPropagation();
-                favThemes.delete(removeBtn.dataset.theme);
-                safeStore('favoriteThemes', JSON.stringify([...favThemes]));
+                const result = await repository.update('favoriteThemes', [], values => values.filter(value => value !== removeBtn.dataset.theme), storageValidators.favoriteThemes);
+                if (reportSaveFailure(result)) return;
+                favThemes = new Set(result.value);
                 updateThemeFavBtn();
                 renderFavThemes();
                 return;
@@ -2776,53 +2980,34 @@ document.addEventListener('DOMContentLoaded', () => {
         renderFavThemes();
         updateThemeFavBtn();
 
-        // Reset buttons
-        function confirmAndReset(msg, action) {
-            if (confirm(msg)) { action(); renderHomeTiles(null, []); }
+        // Every collection reset is ordered with other saves and keeps a recovery copy.
+        const resetDefaults = {
+            watchedVideos: [], videoLastWatched: {}, videoPositions: {}, videoBookmarks: {}, favoriteVideos: [],
+            practiceData: DanceLibraryStore.emptyPracticeData(), danceLibraryNoteDrafts: {},
+            danceLibraryReflectionDrafts: { version: 1, entries: {} }, danceLibraryDeletedBookmark: null
+        };
+        async function confirmAndReset(message, keys) {
+            if (!confirm(message + ' A recovery copy will be kept on this device.')) return;
+            const specs = Object.fromEntries(keys.map(key => [key, { fallback: resetDefaults[key], validate: storageValidators[key] }]));
+            const result = await repository.transact(specs, () => Object.fromEntries(keys.map(key => [key, resetDefaults[key]])), { recoveryKey: 'danceLibraryResetRecovery' });
+            if (reportSaveFailure(result)) return;
+            // Reload closes stale editors and discards only the drafts the user chose to clear.
+            location.reload();
         }
-
         document.getElementById('reset-watched').addEventListener('click', () => {
-            confirmAndReset('Clear all watch history? This cannot be undone.', () => {
-                clearWatchHistoryData();
-            });
+            void confirmAndReset('Clear viewing history and resume positions?', ['watchedVideos', 'videoLastWatched', 'videoPositions']);
         });
-
         document.getElementById('reset-bookmarks').addEventListener('click', () => {
-            confirmAndReset('Clear all bookmarks and notes for every video?', () => {
-                safeRemove('videoBookmarks');
-                if (state.currentVideo) renderBookmarks();
-                updateNotesBadge();
-            });
+            void confirmAndReset('Clear timestamp notes, unfinished note drafts, and bookmark Undo for every lesson?', ['videoBookmarks', 'danceLibraryNoteDrafts', 'danceLibraryDeletedBookmark']);
         });
-
         document.getElementById('reset-favorites').addEventListener('click', () => {
-            confirmAndReset('Clear all favorites?', () => {
-                state.favorites.clear();
-                safeRemove('favoriteVideos');
-                updateNotesBadge();
-            });
+            void confirmAndReset('Clear all favorite lessons?', ['favoriteVideos']);
         });
-
         document.getElementById('reset-positions').addEventListener('click', () => {
-            confirmAndReset('Clear all saved resume positions?', () => {
-                safeRemove('videoPositions');
-            });
+            void confirmAndReset('Clear saved resume positions?', ['videoPositions']);
         });
-
         document.getElementById('reset-all').addEventListener('click', () => {
-            confirmAndReset('Reset EVERYTHING? Watch history, bookmarks, notes, favorites, resume positions — all gone. This cannot be undone.', () => {
-                state.watched.clear();
-                state.favorites.clear();
-                safeRemove('watchedVideos');
-                safeRemove('videoBookmarks');
-                safeRemove('favoriteVideos');
-                safeRemove('videoPositions');
-                state.lastWatched = {};
-                safeRemove('videoLastWatched');
-                renderNavigation();
-                if (state.currentVideo) renderBookmarks();
-                updateNotesBadge();
-            });
+            void confirmAndReset('Clear all practice data? This includes notes, favorites, history, the queue, segments, completion, reflections, and unfinished drafts.', Object.keys(resetDefaults));
         });
     }
 
@@ -2856,7 +3041,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function enforceThemeContrast() {
         const inline = document.body.style;
-        for (const property of ['--text-muted', '--pill-text', '--focus-ring']) inline.removeProperty(property);
+        for (const property of ['--text-main', '--text-muted', '--pill-text', '--focus-ring']) inline.removeProperty(property);
         const computed = getComputedStyle(document.body);
         const baseValue = computed.getPropertyValue('--bg-base').trim();
         const surfaceValue = computed.getPropertyValue('--bg-surface').trim();
@@ -2879,6 +3064,10 @@ document.addEventListener('DOMContentLoaded', () => {
             Math.min(contrastRatio(b.rgb, base), contrastRatio(b.rgb, surface))
             - Math.min(contrastRatio(a.rgb, base), contrastRatio(a.rgb, surface))
         )[0];
+
+        if (Math.min(contrastRatio(main, base), contrastRatio(main, surface)) < 4.5) {
+            inline.setProperty('--text-main', readable.value);
+        }
 
         if (Math.min(contrastRatio(muted, base), contrastRatio(muted, surface)) < 4.5) {
             inline.setProperty('--text-muted', readable.value);
@@ -2927,67 +3116,37 @@ document.addEventListener('DOMContentLoaded', () => {
     const scopeToggleWrap = document.getElementById('exp-scope-toggle-wrap');
     const exportScopeLabel = document.getElementById('export-scope-label');
     const exportModalTitle = document.getElementById('export-modal-title');
-    const scopeToggle = document.getElementById('exp-entire-library');
-
-    scopeToggle.addEventListener('change', () => {
-        if (exportContext !== 'video' || !state.currentVideo) return;
-        const summariesCheckbox = document.getElementById('exp-summaries');
-        const summariesLabel = document.getElementById('exp-summaries-label');
-        const bookmarksLabel = document.getElementById('exp-bookmarks-label');
-        if (scopeToggle.checked) {
-            exportScopeLabel.textContent = 'Exporting entire library:';
-            bookmarksLabel.textContent = 'All bookmarks & notes';
-            summariesLabel.textContent = 'All available video summaries';
-            summariesCheckbox.disabled = false;
-            summariesCheckbox.checked = true;
-            return;
-        }
-
-        const summaryUnavailable = lessonIsUnavailable(videoData[state.currentVideo.path]);
-        exportScopeLabel.textContent = 'Exporting for this video:';
-        bookmarksLabel.textContent = 'This video\'s bookmarks & notes';
-        summariesLabel.textContent = summaryUnavailable
-            ? 'Summary unavailable while the source is quarantined'
-            : 'This video\'s summary';
-        summariesCheckbox.disabled = summaryUnavailable;
-        summariesCheckbox.checked = !summaryUnavailable;
-    });
 
     document.querySelectorAll('.open-export-modal-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             pauseVideoPlayback();
-            const onVideo = state.currentVideo && elements.videoView.style.display !== 'none';
+            const onVideo = !btn.closest('#notes-view, #settings-modal') && state.currentVideo && elements.videoView.style.display !== 'none';
             exportContext = onVideo ? 'video' : 'library';
-            const summariesCheckbox = document.getElementById('exp-summaries');
-            const summariesLabel = document.getElementById('exp-summaries-label');
 
             if (exportContext === 'video') {
-                const summaryUnavailable = lessonIsUnavailable(videoData[state.currentVideo.path]);
                 exportModalTitle.textContent = 'Export — ' + state.currentVideo.title;
                 exportScopeLabel.textContent = 'Exporting for this video:';
                 document.getElementById('exp-bookmarks-label').textContent = 'This video\'s bookmarks & notes';
-                summariesLabel.textContent = summaryUnavailable
-                    ? 'Summary unavailable while the source is quarantined'
-                    : 'This video\'s summary';
-                summariesCheckbox.checked = !summaryUnavailable;
-                summariesCheckbox.disabled = summaryUnavailable;
+                document.getElementById('exp-summaries-label').textContent = 'This video\'s summary';
+                document.getElementById('exp-summaries').checked = true;
                 document.getElementById('exp-favorites').checked = false;
                 document.getElementById('exp-watch-history').checked = false;
-                scopeToggle.checked = false;
+                document.getElementById('exp-entire-library').checked = false;
                 scopeToggleWrap.style.display = 'flex';
             } else {
                 exportModalTitle.textContent = 'Export / Import';
                 exportScopeLabel.textContent = 'Exporting entire library:';
                 document.getElementById('exp-bookmarks-label').textContent = 'All bookmarks & notes';
-                summariesLabel.textContent = 'All available video summaries';
-                summariesCheckbox.checked = false;
-                summariesCheckbox.disabled = false;
+                document.getElementById('exp-summaries-label').textContent = 'All video summaries';
+                document.getElementById('exp-summaries').checked = false;
                 document.getElementById('exp-favorites').checked = true;
-                document.getElementById('exp-watch-history').checked = false;
-                scopeToggle.checked = false;
+                document.getElementById('exp-watch-history').checked = true;
+                document.getElementById('exp-entire-library').checked = false;
                 scopeToggleWrap.style.display = 'none';
             }
             document.getElementById('exp-bookmarks').checked = true;
+            document.getElementById('exp-practice').checked = true;
+            document.querySelector(`input[name="export-format"][value="${exportContext === 'library' ? 'json' : 'markdown'}"]`).checked = true;
             exportModal.style.display = 'flex';
         });
     });
@@ -3003,9 +3162,10 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('do-export').addEventListener('click', async (event) => {
         const includeBookmarks = document.getElementById('exp-bookmarks').checked;
         const includeFavorites = document.getElementById('exp-favorites').checked;
+        const includePractice = document.getElementById('exp-practice').checked;
         const includeSummaries = document.getElementById('exp-summaries').checked;
         const includeWatchHistory = document.getElementById('exp-watch-history').checked;
-        const expandToLibrary = scopeToggle.checked;
+        const expandToLibrary = document.getElementById('exp-entire-library').checked;
         const currentVideoOnly = exportContext === 'video' && !expandToLibrary;
         const format = document.querySelector('input[name="export-format"]:checked').value;
 
@@ -3016,13 +3176,8 @@ document.addEventListener('DOMContentLoaded', () => {
             exportButton.setAttribute('aria-busy', 'true');
             exportButton.textContent = currentVideoOnly ? 'Loading analysis…' : 'Loading all analyses…';
             try {
-                if (currentVideoOnly && state.currentVideo) {
-                    if (!lessonIsUnavailable(videoData[state.currentVideo.path])) {
-                        await ensureSummaryForVideo(state.currentVideo);
-                    }
-                } else {
-                    await ensureAllSummaries();
-                }
+                if (currentVideoOnly && state.currentVideo) await ensureSummaryForVideo(state.currentVideo);
+                else await ensureAllSummaries();
             } catch (error) {
                 console.warn('Could not prepare summaries for export:', error);
                 showToast('Summaries could not be loaded. Check your connection and try again.', 6000, true);
@@ -3038,7 +3193,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (format === 'json') {
             // JSON backup
-            const data = { exportedAt: new Date().toISOString() };
+            const data = { schemaVersion: 2, exportedAt: new Date().toISOString() };
+            if (includePractice) {
+                data.practiceData = safeLoad('practiceData', DanceLibraryStore.emptyPracticeData());
+                if (currentVideoOnly) {
+                    const path = state.currentVideo.path;
+                    data.practiceData = {
+                        version: data.practiceData.version,
+                        queue: data.practiceData.queue.filter(item => item === path),
+                        segments: data.practiceData.segments.filter(item => item.path === path),
+                        completed: Object.fromEntries(Object.entries(data.practiceData.completed).filter(([item]) => item === path)),
+                        reflections: Object.fromEntries(Object.entries(data.practiceData.reflections || {}).filter(([item]) => item === path))
+                    };
+                }
+            }
 
             if (includeBookmarks) {
                 const allBk = safeLoad('videoBookmarks', {});
@@ -3051,22 +3219,27 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             if (includeFavorites) {
                 data.favoriteVideos = safeLoad('favoriteVideos', []);
+                if (currentVideoOnly) data.favoriteVideos = data.favoriteVideos.filter(path => path === state.currentVideo.path);
             }
             if (includeWatchHistory) {
                 data.watchedVideos = safeLoad('watchedVideos', []);
                 data.videoPositions = safeLoad('videoPositions', {});
                 data.videoLastWatched = safeLoad('videoLastWatched', {});
+                if (currentVideoOnly) {
+                    data.watchedVideos = data.watchedVideos.filter(path => path === state.currentVideo.path);
+                    for (const key of ['videoPositions', 'videoLastWatched']) {
+                        data[key] = Object.fromEntries(Object.entries(data[key]).filter(([path]) => path === state.currentVideo.path));
+                    }
+                }
             }
             if (includeSummaries) {
                 if (currentVideoOnly && state.currentVideo) {
                     const info = videoData[state.currentVideo.path];
-                    data.summaries = info && !lessonIsUnavailable(info) && info.summary
-                        ? { [state.currentVideo.path]: info.summary }
-                        : {};
+                    data.summaries = info && !lessonIsUnavailable(info) ? { [state.currentVideo.path]: info.summary || '' } : {};
                 } else {
                     const summaries = {};
                     for (const [path, info] of Object.entries(videoData)) {
-                        if (!lessonIsUnavailable(info) && info.summary) summaries[path] = info.summary;
+                        if (info.summary && !lessonIsUnavailable(info)) summaries[path] = info.summary;
                     }
                     data.summaries = summaries;
                 }
@@ -3095,7 +3268,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         const parts = fav.split('/');
                         parts.pop();
                         const title = titleForVideo(fav, videoData[fav]);
-                        md += `- **${title}** — _${formatVideoFolderPath(parts)}_\n`;
+                        md += `- **${title}** — _${parts.join(' / ')}_\n`;
                     }
                     md += '\n';
                 }
@@ -3124,7 +3297,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         const title = titleForVideo(videoPath, videoData[videoPath]);
 
                         md += `### ${title}\n`;
-                        md += `_${formatVideoFolderPath(parts)}_\n\n`;
+                        md += `_${parts.join(' / ')}_\n\n`;
 
                         for (const bk of bookmarks) {
                             const time = formatTime(bk.t);
@@ -3142,10 +3315,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Summaries
             if (includeSummaries) {
                 const pathsToExport = videoPaths || Object.keys(videoData);
-                const withSummaries = pathsToExport.filter(p => {
-                    const info = videoData[p];
-                    return info && !lessonIsUnavailable(info) && info.summary;
-                });
+                const withSummaries = pathsToExport.filter(p => videoData[p] && videoData[p].summary && !lessonIsUnavailable(videoData[p]));
 
                 if (withSummaries.length > 0) {
                     md += '## Video Summaries\n\n';
@@ -3155,7 +3325,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         const title = titleForVideo(videoPath, videoData[videoPath]);
 
                         md += `### ${title}\n`;
-                        md += `_${formatVideoFolderPath(parts)}_\n\n`;
+                        md += `_${parts.join(' / ')}_\n\n`;
                         md += videoData[videoPath].summary + '\n\n';
                     }
                 }
@@ -3176,6 +3346,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
+            if (includePractice) {
+                const practice = safeLoad('practiceData', DanceLibraryStore.emptyPracticeData());
+                const included = path => !videoPaths || videoPaths.includes(path);
+                const label = path => titleForVideo(path) + ' (' + path.split('/').slice(0, -1).join(' / ') + ')';
+                md += '## Practice plan\n\n';
+                for (const path of practice.queue.filter(included)) md += '- ' + label(path) + (practice.completed[path] !== undefined ? ' — completed' : '') + '\n';
+                md += '\n';
+                for (const segment of practice.segments.filter(item => included(item.path))) md += '- **' + segment.title + '** · ' + label(segment.path) + ' · ' + formatTime(segment.start) + '–' + formatTime(segment.end) + ' at ' + segment.speed + '×\n';
+                for (const [path, reflection] of Object.entries(practice.reflections || {}).filter(([path]) => included(path))) md += '\n### ' + label(path) + '\n\n' + reflection.text + '\n';
+                md += '\n';
+            }
+
             const suffix = currentVideoOnly && state.currentVideo
                 ? state.currentVideo.title.replace(/[^a-zA-Z0-9]/g, '-').substring(0, 30)
                 : 'all';
@@ -3192,7 +3374,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function validateBackupData(data) {
         if (!isRecord(data)) throw new TypeError('Backup root must be an object.');
-        const recognized = ['watchedVideos', 'videoBookmarks', 'favoriteVideos', 'videoPositions', 'videoLastWatched'];
+        if (data.schemaVersion !== undefined && ![1, 2].includes(data.schemaVersion)) throw new TypeError('This backup uses an unsupported format version. Keep the original file.');
+        const recognized = ['watchedVideos', 'videoBookmarks', 'favoriteVideos', 'videoPositions', 'videoLastWatched', 'practiceData'];
         if (!recognized.some(key => data[key] !== undefined)) {
             throw new TypeError('No recognizable Dance Library data was found.');
         }
@@ -3216,70 +3399,57 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const reader = new FileReader();
-        reader.onload = (evt) => {
+        reader.onload = async (evt) => {
             try {
                 const data = validateBackupData(JSON.parse(evt.target.result));
 
-                if (!confirm('Import this backup? This will MERGE with your existing data (not replace it). Continue?')) return;
-
-                if (Array.isArray(data.watchedVideos)) {
-                    const existing = new Set(safeLoad('watchedVideos', []));
-                    data.watchedVideos.forEach(v => existing.add(v));
-                    safeStore('watchedVideos', JSON.stringify([...existing]));
-                    existing.forEach(v => state.watched.add(v));
+                const specs = Object.create(null);
+                for (const key of ['watchedVideos', 'favoriteVideos', 'videoBookmarks', 'videoPositions', 'videoLastWatched', 'practiceData']) {
+                    if (data[key] === undefined) continue;
+                    specs[key] = { fallback: key === 'practiceData' ? DanceLibraryStore.emptyPracticeData() : key === 'watchedVideos' || key === 'favoriteVideos' ? [] : {}, validate: storageValidators[key] };
                 }
-
-                if (data.videoBookmarks && typeof data.videoBookmarks === 'object') {
-                    const existing = safeLoad('videoBookmarks', {});
-                    for (const [path, bks] of Object.entries(data.videoBookmarks)) {
-                        if (!existing[path]) {
-                            existing[path] = bks;
-                        } else {
-                            const existingTimes = new Set(existing[path].map(b => typeof b === 'object' ? b.t : b));
-                            for (const bk of bks) {
-                                const t = typeof bk === 'object' ? bk.t : bk;
-                                if (!existingTimes.has(t)) existing[path].push(bk);
-                            }
-                        }
+                const validTheme = typeof data.theme === 'string' && [...elements.themeSelect.options].some(option => option.value === data.theme);
+                if (validTheme) specs.theme = { fallback: 'arctic', raw: true, validate: value => typeof value === 'string' };
+                const incomingCount = Object.values(data.videoBookmarks || {}).reduce((count, notes) => count + notes.length, 0);
+                if (!confirm('Merge this backup' + (incomingCount ? ' with ' + incomingCount + ' bookmarks' : '') + '? Newer nonempty notes replace older notes at the same time. A recovery copy of your previous data and this backup will be kept on this device.')) return;
+                const result = await repository.transact(specs, current => {
+                    const updates = Object.create(null);
+                    for (const key of ['watchedVideos', 'favoriteVideos']) {
+                        if (data[key] !== undefined) updates[key] = [...new Set([...current[key], ...data[key]])];
                     }
-                    safeStore('videoBookmarks', JSON.stringify(existing));
-                }
-
-                if (Array.isArray(data.favoriteVideos)) {
-                    const existing = new Set(safeLoad('favoriteVideos', []));
-                    data.favoriteVideos.forEach(v => existing.add(v));
-                    safeStore('favoriteVideos', JSON.stringify([...existing]));
-                    existing.forEach(v => state.favorites.add(v));
-                }
-
-                if (data.videoPositions && typeof data.videoPositions === 'object') {
-                    const existing = safeLoad('videoPositions', {});
-                    for (const [path, pos] of Object.entries(data.videoPositions)) {
-                        if (!existing[path] || pos > existing[path]) existing[path] = pos;
+                    if (data.videoBookmarks !== undefined) updates.videoBookmarks = notesCore.mergeBookmarks(current.videoBookmarks, data.videoBookmarks);
+                    for (const key of ['videoPositions', 'videoLastWatched']) {
+                        if (data[key] === undefined) continue;
+                        updates[key] = Object.assign(Object.create(null), current[key]);
+                        for (const [path, value] of Object.entries(data[key])) updates[key][path] = Math.max(updates[key][path] || 0, value);
                     }
-                    safeStore('videoPositions', JSON.stringify(existing));
+                    if (data.practiceData !== undefined) updates.practiceData = DanceLibraryStore.mergePracticeData(current.practiceData, data.practiceData);
+                    if (validTheme) updates.theme = data.theme;
+                    return updates;
+                }, { recoveryKey: 'danceLibraryRestoreRecovery', incomingBackup: data });
+                if (!result.ok) {
+                    showStorageStatus(result.rollbackOk ? 'Import was not saved. Previous data was restored. Download recovery data for a copy.' : 'Import could not finish or fully roll back. Download recovery data before making further changes.');
+                    if (!result.rollbackOk) Object.keys(specs).forEach(key => invalidStorageKeys.add(key));
+                    alert('Import failed. ' + (result.rollbackOk ? 'Your previous saved data is unchanged.' : 'Use Recovery data to retrieve the saved originals.'));
+                    return;
                 }
-
-                if (data.videoLastWatched && typeof data.videoLastWatched === 'object') {
-                    for (const [path, ts] of Object.entries(data.videoLastWatched)) {
-                        if (!state.lastWatched[path] || ts > state.lastWatched[path]) state.lastWatched[path] = ts;
-                    }
-                    safeStore('videoLastWatched', JSON.stringify(state.lastWatched));
-                }
-
-                if (typeof data.theme === 'string' && [...elements.themeSelect.options].some(option => option.value === data.theme)) {
+                state.watched = new Set(safeLoad('watchedVideos', []));
+                state.favorites = new Set(safeLoad('favoriteVideos', []));
+                state.lastWatched = safeLoad('videoLastWatched', {});
+                if (validTheme) {
                     state.theme = data.theme;
                     elements.themeSelect.value = data.theme;
-                    safeStore('theme', data.theme);
                     applyTheme(data.theme);
                 }
 
                 renderNavigation();
-                renderHomeTiles(null, []);
+                refreshHomeTiles();
+                workspace?.render();
                 if (state.currentVideo) renderBookmarks();
+                if (notesView.style.display !== 'none') renderNotesView();
                 updateNotesBadge();
                 exportModal.style.display = 'none';
-                alert('Import complete! Your data has been merged.');
+                showToast('Import complete. A recovery copy is available in My Notes.', 5000);
             } catch (err) {
                 alert('Error reading file: ' + err.message);
             }
@@ -3290,6 +3460,51 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // ── A-B Loop ──────────────────────────────────────────
+    let pendingSegmentCleanup = null;
+    function playSavedSegment(segment) {
+        const video = elements.videoPlayer;
+        if (!catalog.find(segment.path)) return;
+        if (lessonIsUnavailable(catalog.find(segment.path))) {
+            loadVideo(resolveVideoObj(segment.path), { autoplay: false });
+            showToast('The correct recording is unavailable. Your saved segment is kept.', 5000, true);
+            return;
+        }
+        if (state.currentVideo?.path !== segment.path || document.body.dataset.view !== 'video') loadVideo(resolveVideoObj(segment.path), { seekTime: segment.start });
+        if (pendingSegmentCleanup) pendingSegmentCleanup();
+        const request = videoSourceRequest;
+        const cleanup = () => {
+            video.removeEventListener('loadedmetadata', apply);
+            video.removeEventListener('error', cleanup);
+            if (pendingSegmentCleanup === cleanup) pendingSegmentCleanup = null;
+        };
+        const apply = () => {
+            if (request !== videoSourceRequest || state.currentVideo?.path !== segment.path || document.body.dataset.view !== 'video') { cleanup(); return; }
+            if (!Number.isFinite(video.duration) || video.duration <= 0) return;
+            if (segment.start >= video.duration || segment.end > video.duration) {
+                cleanup();
+                showToast('This segment exceeds the lesson duration. Save a shorter range.', 5000, true);
+                return;
+            }
+            if (pendingSeekCleanup) pendingSeekCleanup();
+            skipNextResume = false;
+            state.loopA = segment.start;
+            state.loopB = segment.end;
+            elements.abLoopBtn.textContent = formatTime(segment.start) + ' → ' + formatTime(segment.end);
+            elements.abLoopBtn.className = 'overlay-btn loop-active';
+            elements.abLoopBtn.title = 'Saved segment active. Click to clear.';
+            elements.abLoopBtn.setAttribute('aria-pressed', 'true');
+            elements.abLoopBtn.setAttribute('aria-label', 'Clear active A-B loop');
+            setSpeed(segment.speed);
+            video.currentTime = segment.start;
+            cleanup();
+            requestVideoPlayback('saved segment');
+        };
+        pendingSegmentCleanup = cleanup;
+        video.addEventListener('loadedmetadata', apply);
+        video.addEventListener('error', cleanup);
+        if (video.readyState >= 1) apply();
+    }
+
     function formatTime(seconds) {
         const m = Math.floor(seconds / 60);
         const s = Math.floor(seconds % 60);
@@ -3297,6 +3512,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function clearABLoop() {
+        if (pendingSegmentCleanup) pendingSegmentCleanup();
         state.loopA = null;
         state.loopB = null;
         const btn = elements.abLoopBtn;
@@ -3308,6 +3524,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function setLoopA() {
+        if (lessonIsUnavailable(state.currentVideo)) return;
         const video = elements.videoPlayer;
         if (isNaN(video.duration)) return;
         state.loopA = video.currentTime;
@@ -3320,6 +3537,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function setLoopB() {
+        if (lessonIsUnavailable(state.currentVideo)) return;
         const video = elements.videoPlayer;
         if (isNaN(video.duration) || state.loopA === null) return;
         let a = state.loopA;
@@ -3363,9 +3581,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const t = this.currentTime;
             const d = this.duration;
             if (!isNaN(d) && t > 5 && t < d - 5) {
-                const positions = safeLoad('videoPositions', {});
-                positions[state.currentVideo.path] = Math.floor(t);
-                safeStore('videoPositions', JSON.stringify(positions));
+                savePosition(state.currentVideo.path, Math.floor(t));
             }
         }
     });
@@ -3406,28 +3622,121 @@ document.addEventListener('DOMContentLoaded', () => {
     const bookmarkEditRow = document.getElementById('bookmark-edit-row');
     const bookmarkEditInput = document.getElementById('bookmark-edit-input');
     const bookmarkEditLabel = document.getElementById('bookmark-edit-label');
-    let editingBookmarkIdx = null;
+    let playerNoteEdit = null;
+    // Bind actions to the revision the user sees, even if another tab reorders storage.
+    const renderedBookmarkTargets = new WeakMap();
+    const noteDraftMemory = Object.create(null);
+    const unpersistedDrafts = new Set();
+    window.addEventListener('beforeunload', event => {
+        if (!unpersistedDrafts.size) return;
+        event.preventDefault();
+        event.returnValue = '';
+    });
+
+    function downloadRecoveryData() {
+        const raw = Object.create(null);
+        for (const key of ['videoBookmarks', 'watchedVideos', 'favoriteVideos', 'videoPositions', 'videoLastWatched', 'theme', 'danceLibraryRestoreRecovery', 'danceLibraryDeleteRecovery', 'danceLibraryNoteDrafts', 'danceLibraryDeletedBookmark', 'practiceData', 'danceLibraryTransactionRecovery', 'danceLibraryReflectionDrafts', 'danceLibraryRecoveryRequired', 'danceLibraryResetRecovery']) raw[key] = safeGet(key);
+        downloadFile(`dance-library-recovery-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify({ recoveredAt: new Date().toISOString(), raw, inMemoryDrafts: noteDraftMemory, reflectionDrafts: workspace?.getRecoveryDrafts?.() }, null, 2), 'application/json');
+    }
+    document.getElementById('download-recovery').addEventListener('click', downloadRecoveryData);
+    document.getElementById('notes-recovery-btn').addEventListener('click', downloadRecoveryData);
+
+    const noteDraftSession = crypto.randomUUID?.() || String(Date.now()) + Math.random();
+    function noteDraftKey(path, bookmark) { return JSON.stringify([path, bookmark.t, bookmark.n, noteDraftSession]); }
+    async function saveNoteDraft(path, bookmark, text) {
+        const key = noteDraftKey(path, bookmark);
+        const snapshot = { path, t: bookmark.t, n: text, original: bookmark.n, updatedAt: Date.now() };
+        noteDraftMemory[key] = snapshot;
+        unpersistedDrafts.add(key);
+        const result = await repository.update('danceLibraryNoteDrafts', {}, drafts => ({ ...drafts, [key]: snapshot }), isRecord);
+        if (result.ok && noteDraftMemory[key] === snapshot) unpersistedDrafts.delete(key);
+        if (!result.ok) reportSaveFailure(result);
+        return result.ok;
+    }
+    function clearNoteDraft(path, bookmark) {
+        const key = noteDraftKey(path, bookmark);
+        // A cancellation marker prevents an older recovered draft resurfacing after reload.
+        const cancelled = { path, t: bookmark.t, n: bookmark.n, original: bookmark.n, updatedAt: Date.now(), cancelled: true };
+        noteDraftMemory[key] = cancelled;
+        unpersistedDrafts.delete(key);
+        void repository.update('danceLibraryNoteDrafts', {}, drafts => ({ ...drafts, [key]: cancelled }), isRecord).then(reportSaveFailure);
+    }
+    function getNoteDraft(path, bookmark) {
+        const key = noteDraftKey(path, bookmark);
+        const draft = noteDraftMemory[key] || Object.values(safeLoad('danceLibraryNoteDrafts', {}, isRecord))
+            .filter(draft => draft && draft.path === path && draft.t === bookmark.t && draft.original === bookmark.n && typeof draft.n === 'string' && draft.n.length <= 2000)
+            .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0];
+        return draft ? draft.n : bookmark.n;
+    }
+    async function commitNoteEdit(path, original, text) {
+        const result = await repository.update('videoBookmarks', {}, saved => {
+            const all = notesCore.normalizeBookmarks(saved).bookmarks;
+            const bookmarks = all[path] || [];
+            const index = bookmarks.findIndex(note => note.t === original.t && note.n === original.n && note.ts === original.ts);
+            if (index < 0) throw new Error('This note changed in another view. Your draft is preserved in Recovery data. Reopen the note to review it.');
+            bookmarks[index] = { ...bookmarks[index], n: text.trim(), ts: Math.max(Date.now(), Number(bookmarks[index].ts || 0) + 1) };
+            return all;
+        }, storageValidators.videoBookmarks);
+        if (reportSaveFailure(result)) return false;
+        clearNoteDraft(path, original);
+        return true;
+    }
+    const validateDeletedBookmark = value => value === null || (isRecord(value) && typeof value.path === 'string' && notesCore.normalizeBookmarks({ entry: [value.bookmark] }).invalid === 0);
+    async function deleteBookmarkWithUndo(path, original) {
+        if (!original) return false;
+        const result = await repository.transact({
+            videoBookmarks: { fallback: {}, validate: storageValidators.videoBookmarks },
+            danceLibraryDeletedBookmark: { fallback: null, validate: validateDeletedBookmark }
+        }, values => {
+            const all = notesCore.normalizeBookmarks(values.videoBookmarks).bookmarks;
+            const bookmarks = all[path] || [];
+            const found = bookmarks.findIndex(note => note.t === original.t && note.n === original.n && note.ts === original.ts);
+            if (found < 0) throw new Error('This bookmark changed in another view. Reopen it before deleting.');
+            const [bookmark] = bookmarks.splice(found, 1);
+            if (!bookmarks.length) delete all[path];
+            return { videoBookmarks: all, danceLibraryDeletedBookmark: { path, bookmark, deletedAt: Date.now() } };
+        }, { recoveryKey: 'danceLibraryDeleteRecovery' });
+        if (reportSaveFailure(result)) return false;
+        updateUndoControls();
+        return true;
+    }
+    function updateUndoControls() {
+        const deleted = safeLoad('danceLibraryDeletedBookmark', null, validateDeletedBookmark);
+        document.getElementById('notes-undo').hidden = !deleted;
+        document.getElementById('bookmark-undo-btn').hidden = !deleted;
+    }
+    async function undoBookmarkDelete() {
+        const result = await repository.transact({
+            videoBookmarks: { fallback: {}, validate: storageValidators.videoBookmarks },
+            danceLibraryDeletedBookmark: { fallback: null, validate: validateDeletedBookmark }
+        }, values => {
+            const deleted = values.danceLibraryDeletedBookmark;
+            if (!deleted) return {};
+            const all = notesCore.normalizeBookmarks(values.videoBookmarks).bookmarks;
+            const bookmarks = all[deleted.path] || [];
+            const conflict = bookmarks.find(note => Math.abs(note.t - deleted.bookmark.t) < 1);
+            if (conflict && (conflict.t !== deleted.bookmark.t || conflict.n !== deleted.bookmark.n)) throw new Error('A different note now exists at this time. Undo is kept in Recovery data.');
+            if (!conflict) bookmarks.push(deleted.bookmark);
+            all[deleted.path] = bookmarks.sort((a, b) => a.t - b.t);
+            return { videoBookmarks: all, danceLibraryDeletedBookmark: null };
+        });
+        if (!reportSaveFailure(result)) refreshNoteSurfaces();
+    }
+    document.getElementById('notes-undo-btn').addEventListener('click', undoBookmarkDelete);
+    document.getElementById('bookmark-undo-btn').addEventListener('click', undoBookmarkDelete);
+
+    function refreshNoteSurfaces() {
+        if (state.currentVideo) renderBookmarks();
+        if (notesView.style.display !== 'none') renderNotesView();
+        if (elements.homeView.style.display !== 'none') refreshHomeTiles();
+        updateNotesBadge();
+        updateUndoControls();
+    }
 
     function getBookmarks(videoPath) {
         const all = safeLoad('videoBookmarks', {});
-        let arr = all[videoPath] || [];
-        // Migrate old format: [number, ...] → [{t, n}, ...]
-        if (arr.length > 0 && typeof arr[0] === 'number') {
-            arr = arr.map(t => ({ t: t, n: '' }));
-            all[videoPath] = arr;
-            safeStore('videoBookmarks', JSON.stringify(all));
-        }
+        const arr = all[videoPath] || [];
         return arr.sort((a, b) => a.t - b.t);
-    }
-
-    function saveBookmarksToStorage(videoPath, bookmarks) {
-        const all = safeLoad('videoBookmarks', {});
-        if (bookmarks.length === 0) {
-            delete all[videoPath];
-        } else {
-            all[videoPath] = bookmarks;
-        }
-        safeStore('videoBookmarks', JSON.stringify(all));
     }
 
     function renderBookmarks() {
@@ -3435,9 +3744,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const bookmarks = getBookmarks(state.currentVideo.path);
         elements.bookmarksList.innerHTML = '';
         closeBookmarkEdit();
+        updateUndoControls();
 
         if (bookmarks.length === 0) {
-            elements.bookmarksList.innerHTML = '<span style="font-size:0.8rem;color:var(--text-muted);opacity:0.6;">No bookmarks yet</span>';
+            elements.bookmarksList.innerHTML = '<p class="lesson-notes-empty">Add a timestamped note to remember a cue or correction.</p>';
             return;
         }
 
@@ -3447,6 +3757,7 @@ document.addEventListener('DOMContentLoaded', () => {
             pill.setAttribute('role', 'group');
             pill.dataset.time = bk.t;
             pill.dataset.index = idx;
+            renderedBookmarkTargets.set(pill, { path: state.currentVideo.path, bookmark: { ...bk } });
             const noteText = bk.n ? ` <span class="bookmark-note-text">\u2014 ${escapeHtml(bk.n)}</span>` : '';
             pill.innerHTML = `<button type="button" class="bookmark-open" aria-label="Play from ${formatTime(bk.t)}"><span class="bookmark-time-text">${formatTime(bk.t)}</span>${noteText}</button><button type="button" class="bookmark-edit-icon" data-idx="${idx}" aria-label="Edit bookmark note">&#9998;</button><button type="button" class="bookmark-delete" data-idx="${idx}" aria-label="Delete bookmark">&times;</button>`;
             elements.bookmarksList.appendChild(pill);
@@ -3454,85 +3765,98 @@ document.addEventListener('DOMContentLoaded', () => {
         updateNotesBadge();
     }
 
-    function openBookmarkEdit(idx) {
-        const bookmarks = getBookmarks(state.currentVideo.path);
-        if (idx < 0 || idx >= bookmarks.length) return;
-        editingBookmarkIdx = idx;
-        const bk = bookmarks[idx];
-        bookmarkEditLabel.textContent = formatTime(bk.t);
-        bookmarkEditInput.value = bk.n || '';
-        bookmarkEditInput.placeholder = 'Note for ' + formatTime(bk.t) + ' (optional, Enter to save)';
+    function openBookmarkEdit(target) {
+        if (!target || target.path !== state.currentVideo?.path) return;
+        const bk = target.bookmark;
+        playerNoteEdit = { path: target.path, bookmark: { ...bk } };
+        bookmarkEditLabel.textContent = 'Note at ' + formatTime(bk.t);
+        bookmarkEditInput.value = getNoteDraft(playerNoteEdit.path, bk);
+        bookmarkEditInput.placeholder = 'What should you remember or practice?';
+        document.getElementById('bookmark-edit-status').textContent = `${bookmarkEditInput.value.length}/2000 · Ctrl+Enter to save`;
         bookmarkEditRow.style.display = 'flex';
         bookmarkEditInput.focus();
     }
 
     function closeBookmarkEdit() {
         bookmarkEditRow.style.display = 'none';
-        editingBookmarkIdx = null;
+        playerNoteEdit = null;
         bookmarkEditInput.value = '';
     }
 
-    function saveBookmarkNote() {
-        if (editingBookmarkIdx === null || !state.currentVideo) return;
-        const bookmarks = getBookmarks(state.currentVideo.path);
-        if (editingBookmarkIdx >= bookmarks.length) return;
-        bookmarks[editingBookmarkIdx].n = bookmarkEditInput.value.trim();
-        if (bookmarkEditInput.value.trim()) bookmarks[editingBookmarkIdx].ts = Date.now();
-        saveBookmarksToStorage(state.currentVideo.path, bookmarks);
-        renderBookmarks();
+    async function saveBookmarkNote() {
+        if (!playerNoteEdit || bookmarkEditInput.disabled) return;
+        const edit = playerNoteEdit;
+        const submittedText = bookmarkEditInput.value;
+        bookmarkEditInput.disabled = true;
+        const saved = await commitNoteEdit(edit.path, edit.bookmark, submittedText);
+        bookmarkEditInput.disabled = false;
+        if (playerNoteEdit !== edit) return;
+        if (!saved) {
+            document.getElementById('bookmark-edit-status').textContent = 'Not saved. Keep your text here and try again.';
+            return;
+        }
+        refreshNoteSurfaces();
+        showToast('Note saved on this device.');
     }
 
+    document.getElementById('bookmark-edit-save').addEventListener('click', saveBookmarkNote);
+    document.getElementById('bookmark-edit-cancel').addEventListener('click', () => {
+        if (playerNoteEdit) clearNoteDraft(playerNoteEdit.path, playerNoteEdit.bookmark);
+        closeBookmarkEdit();
+    });
+    bookmarkEditInput.addEventListener('input', async () => {
+        if (!playerNoteEdit) return;
+        const text = bookmarkEditInput.value;
+        const edit = playerNoteEdit;
+        document.getElementById('bookmark-edit-status').textContent = text.length + '/2000 · Saving draft…';
+        const saved = await saveNoteDraft(edit.path, edit.bookmark, text);
+        if (playerNoteEdit !== edit || bookmarkEditInput.value !== text) return;
+        document.getElementById('bookmark-edit-status').textContent = `${bookmarkEditInput.value.length}/2000 · ${saved ? 'Draft kept on this device' : 'Draft not saved — keep this page open'}`;
+    });
+
     bookmarkEditInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
             e.preventDefault();
             saveBookmarkNote();
         } else if (e.key === 'Escape') {
+            e.stopPropagation();
+            if (playerNoteEdit) clearNoteDraft(playerNoteEdit.path, playerNoteEdit.bookmark);
             closeBookmarkEdit();
         }
     });
 
-    bookmarkEditInput.addEventListener('blur', () => {
-        // Save on blur if there's text, otherwise just close
-        if (bookmarkEditInput.value.trim()) {
-            saveBookmarkNote();
-        } else {
-            closeBookmarkEdit();
-        }
-    });
-
-    elements.addBookmarkBtn.addEventListener('click', () => {
+    elements.addBookmarkBtn.addEventListener('click', async () => {
         const v = elements.videoPlayer;
-        if (!state.currentVideo || isNaN(v.duration)) return;
+        if (!state.currentVideo || lessonIsUnavailable(state.currentVideo) || isNaN(v.duration)) return;
+        const path = state.currentVideo.path;
         const time = Math.round(v.currentTime * 10) / 10;
-        const bookmarks = getBookmarks(state.currentVideo.path);
-        // Don't add duplicates (within 1s)
-        if (bookmarks.some(bk => Math.abs(bk.t - time) < 1)) return;
-        bookmarks.push({ t: time, n: '', ts: Date.now() });
-        saveBookmarksToStorage(state.currentVideo.path, bookmarks);
+        const result = await repository.update('videoBookmarks', {}, saved => {
+            const all = notesCore.normalizeBookmarks(saved).bookmarks;
+            const bookmarks = all[path] || [];
+            if (!bookmarks.some(note => Math.abs(note.t - time) < 1)) bookmarks.push({ t: time, n: '', ts: Date.now() });
+            all[path] = bookmarks.sort((a, b) => a.t - b.t);
+            return all;
+        }, storageValidators.videoBookmarks);
+        if (reportSaveFailure(result) || state.currentVideo?.path !== path) return;
         renderBookmarks();
-        // Auto-open edit for the newly added bookmark
-        const sorted = getBookmarks(state.currentVideo.path);
-        const newIdx = sorted.findIndex(bk => Math.abs(bk.t - time) < 1);
-        if (newIdx !== -1) openBookmarkEdit(newIdx);
+        const bookmark = getBookmarks(path).find(note => Math.abs(note.t - time) < 1);
+        if (bookmark) openBookmarkEdit({ path, bookmark });
     });
 
-    elements.bookmarksList.addEventListener('click', (e) => {
+    elements.bookmarksList.addEventListener('click', async (e) => {
         // Edit icon clicked
         const editIcon = e.target.closest('.bookmark-edit-icon');
         if (editIcon) {
             e.stopPropagation();
-            openBookmarkEdit(parseInt(editIcon.dataset.idx));
+            openBookmarkEdit(renderedBookmarkTargets.get(editIcon.closest('.bookmark-pill')));
             return;
         }
         // Delete button clicked
         const deleteBtn = e.target.closest('.bookmark-delete');
         if (deleteBtn) {
             e.stopPropagation();
-            const idx = parseInt(deleteBtn.dataset.idx);
-            const bookmarks = getBookmarks(state.currentVideo.path);
-            bookmarks.splice(idx, 1);
-            saveBookmarksToStorage(state.currentVideo.path, bookmarks);
-            renderBookmarks();
+            const target = renderedBookmarkTargets.get(deleteBtn.closest('.bookmark-pill'));
+            if (target && await deleteBookmarkWithUndo(target.path, target.bookmark)) refreshNoteSurfaces();
             return;
         }
         // Pill clicked — seek to time
@@ -3540,8 +3864,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const pill = openButton && openButton.closest('.bookmark-pill');
         if (pill) {
             const time = parseFloat(pill.dataset.time);
-            elements.videoPlayer.currentTime = time;
-            requestVideoPlayback('bookmark');
+            seekCurrentLesson(time, true);
         }
     });
 
@@ -3582,18 +3905,8 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.favBtn.setAttribute('aria-label', elements.favBtn.title);
     }
 
-    elements.favBtn.addEventListener('click', () => {
-        if (!state.currentVideo) return;
-        const path = state.currentVideo.path;
-        if (state.favorites.has(path)) {
-            state.favorites.delete(path);
-        } else {
-            state.favorites.add(path);
-        }
-        safeStore('favoriteVideos', JSON.stringify([...state.favorites]));
-        updateFavBtn();
-        updateNotesBadge();
-        updateHomeStats();
+    elements.favBtn.addEventListener('click', async () => {
+        if (state.currentVideo) await toggleFavorite(state.currentVideo.path);
     });
 
     // ── Notes & Favorites View ─────────────────────────
@@ -3602,105 +3915,118 @@ document.addEventListener('DOMContentLoaded', () => {
     const notesSubtitle = document.getElementById('notes-subtitle');
 
     function showNotesView() {
-        pauseVideoPlayback();
+        if (document.body.dataset.view !== 'notes') {
+            const current = routes.parse(location.hash);
+            notesReturnRoute = current.view === 'notes' || current.invalid ? { view: 'home' } : current;
+        }
+        pauseVideoPlayback({ destroyStream: true });
         pendingUnfavorites = new Set();
+        elements.homeView.style.display = 'none';
+        elements.videoView.style.display = 'none';
+        document.body.dataset.view = 'notes';
+        updateWorkspaceNavigation('notes');
         notesView.style.display = 'flex';
         renderNotesView();
         markNotesSeen();
+        updateUndoControls();
+        writeRoute({ view: 'notes' });
+        if (usesCompactLayout()) setSidebarOpen(false, { restoreFocus: false });
+        scrollMainToTop();
+        document.getElementById('notes-dialog-title').focus({ preventScroll: true });
     }
-
     function closeNotesView(options = {}) {
-        if (options.restoreFocus === false) suppressDialogFocusReturn(notesView);
         notesView.style.display = 'none';
+        if (options.restoreFocus === false) return;
+        writeRoute(notesReturnRoute);
+        navigateToRoute(notesReturnRoute);
     }
-
     function resolveVideoObj(videoPath) {
-        const info = videoData[videoPath];
-        if (!info) return null;
-        const parts = videoPath.split('/');
-        parts.pop();
-        const title = titleForVideo(videoPath, info);
-        return { ...info, title, path: videoPath, folderPath: formatVideoFolderPath(parts) };
+        const entry = catalog.find(videoPath);
+        if (!entry) return null;
+        return { ...entry, ...videoData[videoPath], title: entry.title, path: videoPath, folderPath: displayFolderPath(entry.folderSegments) };
     }
 
     // Track unfavorited items during this notes view session (soft delete)
     let pendingUnfavorites = new Set();
     let notesFilterMode = 'all'; // 'all' or 'notes-only'
+    document.getElementById('notes-sort').addEventListener('change', renderNotesView);
+    notesView.querySelector('.notebook-toolbar').addEventListener('click', event => {
+        const button = event.target.closest('[data-filter]');
+        if (!button) return;
+        notesFilterMode = button.dataset.filter;
+        notesView.querySelectorAll('.notebook-toolbar [data-filter]').forEach(control => {
+            control.classList.toggle('active', control.dataset.filter === notesFilterMode);
+            control.setAttribute('aria-pressed', String(control.dataset.filter === notesFilterMode));
+        });
+        renderNotesView();
+    });
 
+    function matchesNotebookQuery(path, text, query = notesSearchQuery) {
+        const normalize = value => String(value).normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+        const haystack = normalize(path + ' ' + displayCourseName(path.split('/')[0]) + ' ' + titleForVideo(path) + ' ' + (catalog.find(path)?.category || '') + ' ' + text);
+        return normalize(query).trim().split(/\s+/).filter(Boolean).every(token => haystack.includes(token));
+    }
     function renderNotesView() {
         notesContent.innerHTML = '';
         const allBookmarks = safeLoad('videoBookmarks', {});
+        const reflections = safeLoad('practiceData', DanceLibraryStore.emptyPracticeData()).reflections || {};
+        const reflectionPaths = Object.keys(reflections).filter(path => reflections[path].text.trim());
 
-        // Count totals for subtitle
-        let totalNotes = 0;
+        // Count each timestamp or reflection once; written notes belong to timestamps.
         let totalBookmarks = 0;
         for (const arr of Object.values(allBookmarks)) {
             if (!Array.isArray(arr) || arr.length === 0) continue;
             totalBookmarks += arr.length;
-            if (typeof arr[0] === 'object') {
-                totalNotes += arr.filter(b => b.n).length;
-            }
         }
-        const subtitleParts = [];
-        if (totalNotes > 0) subtitleParts.push(totalNotes + ' note' + (totalNotes !== 1 ? 's' : ''));
-        if (totalBookmarks > 0) subtitleParts.push(totalBookmarks + ' bookmark' + (totalBookmarks !== 1 ? 's' : ''));
-        notesSubtitle.textContent = subtitleParts.length > 0 ? subtitleParts.join(' \u00B7 ') : '';
+        const totalEntries = totalBookmarks + reflectionPaths.length;
+        const lessonCount = new Set([...Object.keys(allBookmarks).filter(path => allBookmarks[path]?.length), ...reflectionPaths]).size;
+        notesSubtitle.textContent = totalEntries
+            ? `${totalEntries} ${totalEntries === 1 ? 'entry' : 'entries'} across ${lessonCount} ${lessonCount === 1 ? 'lesson' : 'lessons'}`
+            : 'Keep the cues you want to return to.';
+        notesView.querySelector('.notebook-controls').hidden = totalEntries === 0;
 
         // Search query from notes search bar
         const sq = notesSearchQuery;
+        let visibleNotes = 0;
 
         // ── Bookmarks & Notes Section ──
-        const bookmarkPaths = Object.keys(allBookmarks).filter(p => {
-            const arr = allBookmarks[p];
-            if (!Array.isArray(arr) || arr.length === 0) return false;
-            if (!sq) return true;
-            // Match against video title, path, or note text
-            const searchStr = searchableVideoText(p, titleForVideo(p, videoData[p]));
-            if (searchStr.includes(sq)) return true;
-            return arr.some(bk => typeof bk === 'object' && bk.n && bk.n.toLowerCase().includes(sq));
-        });
-
-        // Sort by most bookmarks first
+        const bookmarkPaths = [...new Set([...Object.keys(allBookmarks), ...reflectionPaths])].filter(path =>
+            (allBookmarks[path] || []).some(note => matchesNotebookQuery(path, note.n || ''))
+            || (reflections[path]?.text.trim() && matchesNotebookQuery(path, reflections[path].text)));
+        const mostRecent = path => Math.max(reflections[path]?.updatedAt || 0, ...(allBookmarks[path] || []).map(note => note.ts || 0));
         bookmarkPaths.sort((a, b) => {
-            return allBookmarks[b].length - allBookmarks[a].length;
+            if (document.getElementById('notes-sort').value === 'lesson') return compareNatural(titleForVideo(a), titleForVideo(b));
+            return mostRecent(b) - mostRecent(a) || compareNatural(titleForVideo(a), titleForVideo(b));
         });
 
         if (bookmarkPaths.length > 0) {
             const section = document.createElement('div');
             section.className = 'notes-section';
 
-            // Header with filter toggle
-            const headerHtml = `<div class="notes-section-title" style="justify-content: space-between;">
-                <span>&#9998; Bookmarks &amp; Notes</span>
-                <div class="notes-filter-toggle">
-                    <button type="button" class="notes-filter-btn ${notesFilterMode === 'all' ? 'active' : ''}" data-filter="all" aria-pressed="${notesFilterMode === 'all'}">All</button>
-                    <button type="button" class="notes-filter-btn ${notesFilterMode === 'notes-only' ? 'active' : ''}" data-filter="notes-only" aria-pressed="${notesFilterMode === 'notes-only'}">With notes</button>
-                </div>
-            </div>`;
-            section.innerHTML = headerHtml;
-
             let hasVisibleItems = false;
 
             for (const videoPath of bookmarkPaths) {
-                let bookmarks = allBookmarks[videoPath];
-                if (!Array.isArray(bookmarks) || bookmarks.length === 0) continue;
+                let bookmarks = allBookmarks[videoPath] || [];
                 if (typeof bookmarks[0] === 'number') {
                     bookmarks = bookmarks.map(t => ({ t, n: '' }));
                 }
                 bookmarks.sort((a, b) => a.t - b.t);
 
                 // Apply filter
-                const filtered = notesFilterMode === 'notes-only' ? bookmarks.filter(bk => bk.n) : bookmarks;
-                if (filtered.length === 0) continue;
+                const filtered = bookmarks.filter(bk => (notesFilterMode !== 'notes-only' || bk.n) && matchesNotebookQuery(videoPath, bk.n));
+                const reflection = reflections[videoPath];
+                const includeReflection = reflection?.text.trim() && matchesNotebookQuery(videoPath, reflection.text);
+                if (filtered.length === 0 && !includeReflection) continue;
 
                 hasVisibleItems = true;
-                const videoObj = resolveVideoObj(videoPath);
-                if (!videoObj) continue;
+                const videoObj = resolveVideoObj(videoPath) || { title: titleForVideo(videoPath), folderPath: 'Lesson unavailable · your notes are preserved' };
+                visibleNotes += filtered.length;
 
-                const group = document.createElement('div');
+                const group = document.createElement('section');
                 group.className = 'notes-video-group';
 
-                let itemsHtml = '';
+                let itemsHtml = includeReflection ? '<article class="notebook-reflection" data-path="' + escapeHtml(videoPath) + '"><div class="notebook-reflection-heading"><strong>Lesson reflection</strong><span>' + timeAgo(reflection.updatedAt) + '</span></div><p>' + escapeHtml(reflection.text) + '</p><button type="button" class="bookmark-add-btn notebook-open-reflection" data-path="' + escapeHtml(videoPath) + '"' + (catalog.find(videoPath) ? '' : ' disabled') + '>Open reflection</button></article>' : '';
+                if (includeReflection) visibleNotes++;
                 filtered.forEach((bk) => {
                     // Find the real index in the full (unfiltered) sorted array
                     const realIdx = bookmarks.findIndex(b => b.t === bk.t && b.n === bk.n);
@@ -3709,16 +4035,16 @@ document.addEventListener('DOMContentLoaded', () => {
                     const noteAgo = bk.ts ? `<span class="notes-bookmark-ago">${timeAgo(bk.ts)}</span>` : '';
                     const noteHtml = hasNote
                         ? `<span class="notes-bookmark-note">${escapedNote}</span>${noteAgo}`
-                        : '<span class="notes-bookmark-notext">No note</span>';
+                        : '<span class="notes-bookmark-notext">Saved timestamp</span>';
                     itemsHtml += `<div class="notes-bookmark-item ${hasNote ? 'has-note' : ''}" data-path="${escapeHtml(videoPath)}" data-time="${escapeHtml(bk.t)}" data-bk-idx="${realIdx}" role="group">
                         <div class="notes-bookmark-open" role="button" tabindex="0" data-path="${escapeHtml(videoPath)}" data-time="${escapeHtml(bk.t)}">
                             <span class="notes-bookmark-time">${formatTime(bk.t)}</span>
                             <span class="notes-bookmark-text-wrap">${noteHtml}</span>
                         </div>
                         <span class="notes-item-actions">
-                            <button type="button" class="notes-item-copy" data-path="${escapeHtml(videoPath)}" data-time="${escapeHtml(bk.t)}" data-note="${escapedNote}" aria-label="Copy note">&#128203;</button>
-                            <button type="button" class="notes-item-edit" data-path="${escapeHtml(videoPath)}" data-bk-idx="${realIdx}" data-note="${escapedNote}" aria-label="Edit note">&#9998;</button>
-                            <button type="button" class="notes-item-delete" data-path="${escapeHtml(videoPath)}" data-bk-idx="${realIdx}" aria-label="Delete bookmark">&times;</button>
+                            <button type="button" class="notes-item-copy" data-path="${escapeHtml(videoPath)}" data-time="${escapeHtml(bk.t)}" data-note="${escapedNote}" aria-label="Copy note">Copy</button>
+                            <button type="button" class="notes-item-edit" data-path="${escapeHtml(videoPath)}" data-bk-idx="${realIdx}" data-note="${escapedNote}" aria-label="Edit note">Edit</button>
+                            <button type="button" class="notes-item-delete" data-path="${escapeHtml(videoPath)}" data-bk-idx="${realIdx}" aria-label="Delete bookmark">Delete</button>
                         </span>
                     </div>`;
                 });
@@ -3726,12 +4052,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 group.innerHTML = `
                     <div class="notes-video-header">
                         <div>
-                            <button type="button" class="notes-video-title" data-path="${escapeHtml(videoPath)}">${escapeHtml(videoObj.title)}</button>
+                            <h2><button type="button" class="notes-video-title" data-path="${escapeHtml(videoPath)}">${escapeHtml(videoObj.title)}</button></h2>
                             <div class="notes-video-path">${escapeHtml(videoObj.folderPath)}</div>
                         </div>
                     </div>
                     ${itemsHtml}
                 `;
+                group.querySelectorAll('.notes-bookmark-item').forEach((item, index) => {
+                    renderedBookmarkTargets.set(item, { path: videoPath, bookmark: { ...filtered[index] } });
+                });
                 section.appendChild(group);
             }
 
@@ -3748,13 +4077,53 @@ document.addEventListener('DOMContentLoaded', () => {
         // Favorites are now in their own separate modal
 
         // ── Empty State ──
-        if (bookmarkPaths.length === 0) {
-            notesContent.innerHTML = '<div class="notes-empty">No bookmarks or notes yet. Watch a video and use the bookmark button to start.</div>';
+        if (visibleNotes === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'notes-empty';
+            const heading = document.createElement('h2');
+            heading.textContent = sq ? 'No notes match your search' : totalBookmarks ? 'Add a cue to a timestamp' : 'Start with a lesson';
+            const description = document.createElement('p');
+            description.textContent = sq ? 'Try a lesson name, instructor, or a word from your notes.'
+                : notesFilterMode === 'notes-only' && totalBookmarks ? 'No written notes yet. Edit a timestamp bookmark to add one.'
+                : 'Open a lesson and add a note at the moment you want to remember. Keep a reflection for the bigger picture: what clicked, what needs work, and what comes next.';
+            const action = document.createElement('button');
+            action.type = 'button';
+            action.className = 'notebook-browse-btn';
+            action.dataset.notebookAction = sq ? 'clear-search' : totalBookmarks ? 'show-all' : 'browse';
+            action.textContent = sq ? 'Clear search' : totalBookmarks ? 'Show all entries' : 'Browse lessons';
+            empty.append(heading, description, action);
+            notesContent.replaceChildren(empty);
         }
+        document.getElementById('notes-results').textContent = `${visibleNotes} of ${totalBookmarks + reflectionPaths.length} ${reflectionPaths.length ? 'notebook entries' : 'bookmarks'}${sq ? ' match your search' : ''}`;
+        document.getElementById('notes-results').hidden = !sq && notesFilterMode === 'all';
         updateNotesBadge();
     }
 
-    function handleNotesClick(e) {
+    async function handleNotesClick(e) {
+        const notebookAction = e.target.closest('[data-notebook-action]');
+        if (notebookAction) {
+            if (notebookAction.dataset.notebookAction === 'clear-search') {
+                notesSearchQuery = '';
+                document.getElementById('notes-search-input').value = '';
+                renderNotesView();
+                document.getElementById('notes-search-input').focus();
+            } else if (notebookAction.dataset.notebookAction === 'show-all') {
+                notesView.querySelector('[data-filter="all"]').click();
+            } else {
+                showLibraryHome();
+            }
+            return;
+        }
+        const reflectionButton = e.target.closest('.notebook-open-reflection');
+        if (reflectionButton) {
+            const video = resolveVideoObj(reflectionButton.dataset.path);
+            if (!video) return;
+            loadVideo(video, { autoplay: false, focus: false });
+            document.getElementById('practice-tab-notes').click();
+            document.querySelector('.lesson-reflection').open = true;
+            document.getElementById('lesson-reflection-input').focus();
+            return;
+        }
         // Filter toggle buttons
         const filterBtn = e.target.closest('.notes-filter-btn');
         if (filterBtn) {
@@ -3783,7 +4152,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     return;
                 }
                 copyIcon.textContent = '✓';
-                setTimeout(() => { copyIcon.textContent = '📋'; }, 1500);
+                setTimeout(() => { copyIcon.textContent = 'Copy'; }, 1500);
             });
             return;
         }
@@ -3793,55 +4162,77 @@ document.addEventListener('DOMContentLoaded', () => {
         if (editIcon) {
             e.stopPropagation();
             const item = editIcon.closest('.notes-bookmark-item');
+            if (item.querySelector('textarea')) { item.querySelector('textarea').focus(); return; }
+            const target = renderedBookmarkTargets.get(item);
+            if (!target) return;
+            const { path: videoPath, bookmark: original } = target;
             const textWrap = item.querySelector('.notes-bookmark-text-wrap');
             const openTarget = item.querySelector('.notes-bookmark-open');
             openTarget.removeAttribute('role');
             openTarget.removeAttribute('tabindex');
-            const currentNote = editIcon.dataset.note || '';
-            const videoPath = editIcon.dataset.path;
-            const bkIdx = parseInt(editIcon.dataset.bkIdx);
 
             // Replace text with a labelled input without interpolating note text into HTML.
             textWrap.innerHTML = '';
-            const input = document.createElement('input');
-            input.type = 'text';
+            const input = document.createElement('textarea');
             input.className = 'notes-inline-edit';
-            input.value = currentNote;
+            input.value = getNoteDraft(videoPath, original);
             input.placeholder = 'Add a note...';
-            input.maxLength = 120;
+            input.maxLength = 2000;
+            input.rows = 5;
             const videoObj = resolveVideoObj(videoPath);
             const context = videoObj ? ` for ${videoObj.title}` : '';
             input.setAttribute('aria-label', `Edit note at ${formatTime(parseFloat(item.dataset.time))}${context}`);
             textWrap.appendChild(input);
+            const footer = document.createElement('div');
+            footer.className = 'note-editor-footer';
+            const status = document.createElement('span');
+            status.setAttribute('role', 'status');
+            status.textContent = `${input.value.length}/2000 · Ctrl+Enter to save`;
+            const cancel = document.createElement('button');
+            cancel.type = 'button'; cancel.className = 'bookmark-add-btn'; cancel.textContent = 'Cancel';
+            const save = document.createElement('button');
+            save.type = 'button'; save.className = 'bookmark-add-btn note-save-btn'; save.textContent = 'Save note';
+            footer.append(status, cancel, save);
+            textWrap.appendChild(footer);
+            item.classList.add('is-editing');
             input.focus();
             input.selectionStart = input.value.length;
 
             let saved = false;
-            const saveEdit = () => {
-                if (saved) return;
-                saved = true;
+            const saveEdit = async () => {
+                if (saved || input.disabled) return;
                 const newNote = input.value.trim();
-                const allBk = safeLoad('videoBookmarks', {});
-                let arr = allBk[videoPath] || [];
-                if (arr.length > 0 && typeof arr[0] === 'number') {
-                    arr = arr.map(t => ({ t, n: '' }));
+                input.disabled = true;
+                save.disabled = true;
+                cancel.disabled = true;
+                const committed = await commitNoteEdit(videoPath, original, newNote);
+                input.disabled = false;
+                save.disabled = false;
+                cancel.disabled = false;
+                if (!committed) {
+                    status.textContent = 'Not saved. Keep your text here and try again.';
+                    return;
                 }
-                arr.sort((a, b) => a.t - b.t);
-                if (bkIdx < arr.length) {
-                    arr[bkIdx].n = newNote;
-                    if (newNote) arr[bkIdx].ts = Date.now();
-                    allBk[videoPath] = arr;
-                    safeStore('videoBookmarks', JSON.stringify(allBk));
-                }
-                renderNotesView();
-                if (elements.homeView.style.display !== 'none') renderHomeTiles(null, []);
+                saved = true;
+                if (!input.isConnected) return;
+                refreshNoteSurfaces();
+                notesContent.querySelector(`.notes-bookmark-item[data-path="${CSS.escape(videoPath)}"][data-time="${original.t}"] .notes-item-edit`)?.focus();
             };
-
-            input.addEventListener('keydown', (ev) => {
-                if (ev.key === 'Enter') { ev.preventDefault(); saveEdit(); }
-                else if (ev.key === 'Escape') { renderNotesView(); }
+            const cancelEdit = () => { clearNoteDraft(videoPath, original); renderNotesView(); };
+            save.addEventListener('click', ev => { ev.stopPropagation(); saveEdit(); });
+            cancel.addEventListener('click', ev => { ev.stopPropagation(); cancelEdit(); });
+            input.addEventListener('input', async () => {
+                const text = input.value;
+                status.textContent = text.length + '/2000 · Saving draft…';
+                const persisted = await saveNoteDraft(videoPath, original, text);
+                if (!input.isConnected || input.value !== text) return;
+                status.textContent = `${input.value.length}/2000 · ${persisted ? 'Draft kept on this device' : 'Draft not saved — keep this page open'}`;
             });
-            input.addEventListener('blur', saveEdit);
+            input.addEventListener('keydown', (ev) => {
+                ev.stopPropagation();
+                if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) { ev.preventDefault(); saveEdit(); }
+                else if (ev.key === 'Escape') { ev.preventDefault(); cancelEdit(); }
+            });
             return;
         }
 
@@ -3849,31 +4240,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const deleteIcon = e.target.closest('.notes-item-delete');
         if (deleteIcon) {
             e.stopPropagation();
-            const videoPath = deleteIcon.dataset.path;
-            const bkIdx = parseInt(deleteIcon.dataset.bkIdx);
-            const allBk = safeLoad('videoBookmarks', {});
-            let arr = allBk[videoPath] || [];
-            if (arr.length > 0 && typeof arr[0] === 'number') {
-                arr = arr.map(t => ({ t, n: '' }));
-            }
-            arr.sort((a, b) => a.t - b.t);
-            arr.splice(bkIdx, 1);
-            if (arr.length === 0) {
-                delete allBk[videoPath];
-            } else {
-                allBk[videoPath] = arr;
-            }
-            safeStore('videoBookmarks', JSON.stringify(allBk));
-            renderNotesView();
-            updateNotesBadge();
-            if (elements.homeView.style.display !== 'none') renderHomeTiles(null, []);
+            const target = renderedBookmarkTargets.get(deleteIcon.closest('.notes-bookmark-item'));
+            if (target && await deleteBookmarkWithUndo(target.path, target.bookmark)) refreshNoteSurfaces();
             return;
         }
 
         // Bookmark item → load video + seek
         const openButton = e.target.closest('.notes-bookmark-open');
         const bookmarkItem = openButton && openButton.closest('.notes-bookmark-item');
-        if (bookmarkItem) {
+        if (bookmarkItem && !bookmarkItem.classList.contains('is-editing')) {
             const videoObj = resolveVideoObj(bookmarkItem.dataset.path);
             if (videoObj) {
                 const seekTime = parseFloat(bookmarkItem.dataset.time);
@@ -3915,18 +4290,93 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // ── Theater Mode ─────────────────────────────────────
+    // Theater shares the existing dialog manager; only its covered subtrees are
+    // owned here. The main/sidebar/skip-link inert flags keep their existing owner.
     const theaterBtn = document.getElementById('theater-btn');
+    const theaterTools = document.querySelector('.player-overlay-controls');
     let theaterMode = false;
+    let theaterReturnFocus = null;
+    const theaterCovered = new Map();
+    const theaterGuards = [];
 
-    function toggleTheater() {
-        theaterMode = !theaterMode;
-        document.body.classList.toggle('theater-mode', theaterMode);
-        theaterBtn.classList.toggle('theater-active', theaterMode);
-        theaterBtn.setAttribute('aria-pressed', String(theaterMode));
-        theaterBtn.setAttribute('aria-label', theaterMode ? 'Exit theater mode' : 'Enter theater mode');
+    function theaterFocusables() {
+        const selector = 'button, a[href], input, select, textarea, video[controls], [tabindex]';
+        return [elements.playerContainer, theaterTools].flatMap(region => [...region.querySelectorAll(selector)])
+            .filter(element => !element.disabled && element.tabIndex >= 0 && !element.closest('[inert]')
+                && element.getClientRects().length && getComputedStyle(element).visibility !== 'hidden');
     }
 
+    function focusTheaterEdge(last = false) {
+        if (!theaterMode || hasOpenDialog()) return;
+        const targets = theaterFocusables();
+        (targets[last ? targets.length - 1 : 0] || theaterBtn).focus({ preventScroll: true });
+    }
+
+    function setTheaterMode(enabled, { restoreFocus = true } = {}) {
+        if (enabled && lessonIsUnavailable(state.currentVideo)) return;
+        if (theaterMode === enabled) return;
+        theaterMode = enabled;
+        if (enabled) {
+            theaterReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : theaterBtn;
+            if (usesCompactLayout() && sidebarIsOpen()) setSidebarOpen(false, { restoreFocus: false });
+        }
+        document.body.classList.toggle('theater-mode', enabled);
+        theaterBtn.classList.toggle('theater-active', enabled);
+        theaterBtn.setAttribute('aria-pressed', String(enabled));
+        theaterBtn.setAttribute('aria-label', enabled ? 'Exit theater mode' : 'Enter theater mode');
+
+        if (enabled) {
+            for (const region of document.querySelectorAll(
+                '#workspace-lesson-header, #video-info-wrapper, .playback-controls-row, .source-toggle, #mobile-header, .workspace-mobile-nav, #open-sidebar-btn'
+            )) {
+                theaterCovered.set(region, region.inert);
+                region.inert = true;
+            }
+            // Boundary guards preserve the browser's native video-control Tab
+            // sequence, including controls in the video's closed shadow root.
+            const before = document.createElement('span');
+            const after = document.createElement('span');
+            for (const guard of [before, after]) {
+                guard.tabIndex = 0;
+                guard.className = 'visually-hidden';
+                guard.setAttribute('aria-hidden', 'true');
+                guard.dataset.theaterFocusGuard = '';
+                theaterGuards.push(guard);
+            }
+            before.addEventListener('focus', () => focusTheaterEdge(true));
+            after.addEventListener('focus', () => focusTheaterEdge());
+            elements.playerContainer.before(before);
+            theaterTools.after(after);
+            syncSidebarAccessibility();
+            theaterBtn.focus({ preventScroll: true });
+        } else {
+            for (const guard of theaterGuards.splice(0)) guard.remove();
+            for (const [region, previous] of theaterCovered) region.inert = previous;
+            theaterCovered.clear();
+            syncSidebarAccessibility();
+            const target = theaterReturnFocus;
+            theaterReturnFocus = null;
+            if (restoreFocus && !hasOpenDialog()) {
+                const canReturn = target?.isConnected && !target.closest('[inert]') && target.getClientRects().length;
+                (canReturn ? target : theaterBtn).focus({ preventScroll: true });
+            }
+        }
+    }
+
+    function toggleTheater() { setTheaterMode(!theaterMode); }
     theaterBtn.addEventListener('click', toggleTheater);
+
+    document.addEventListener('focusin', event => {
+        if (!theaterMode || document.body.dataset.view !== 'video' || hasOpenDialog()) return;
+        if (elements.playerContainer.contains(event.target) || theaterTools.contains(event.target)
+            || theaterGuards.includes(event.target) || event.target.closest('#storage-status')) return;
+        theaterBtn.focus({ preventScroll: true });
+    });
+
+    // Back/Forward may leave the lesson without clicking an on-page exit.
+    new MutationObserver(() => {
+        if (theaterMode && document.body.dataset.view !== 'video') setTheaterMode(false, { restoreFocus: false });
+    }).observe(document.body, { attributes: true, attributeFilter: ['data-view'] });
 
     // ── Spotlight Search ─────────────────────────────────
     const spotlightOverlay = document.getElementById('spotlight-overlay');
@@ -3961,29 +4411,16 @@ document.addEventListener('DOMContentLoaded', () => {
         spotlightInput.removeAttribute('aria-activedescendant');
         if (!query.trim()) return;
 
-        const q = query.toLowerCase();
-        const matches = [];
-
-        for (const [path, info] of Object.entries(videoData)) {
-            const parts = path.split('/');
-            const title = titleForVideo(path, info);
-            const folderParts = parts.slice(0, -1);
-            const searchStr = searchableVideoText(path, title);
-
-            if (searchStr.includes(q)) {
-                const normalizedTitle = title.toLowerCase();
-                const score = normalizedTitle.startsWith(q) ? 0 : normalizedTitle.includes(q) ? 1 : 2;
-                matches.push({ title, path, folderPath: formatVideoFolderPath(folderParts), info, score });
-            }
-        }
+        const matches = catalog.search(query, { limit: 40 }).map(video => ({
+            ...video, info: videoData[video.path], folderPath: displayFolderPath(video.folderSegments)
+        }));
 
         if (matches.length === 0) {
             spotlightResults.innerHTML = '<div class="spotlight-empty">No videos found</div>';
             return;
         }
 
-        matches.sort((a, b) => a.score - b.score || compareNatural(a.title, b.title));
-        matches.slice(0, 20).forEach((m, i) => {
+        matches.forEach((m, i) => {
             const result = document.createElement('button');
             result.type = 'button';
             result.id = `spotlight-result-${i}`;
@@ -4130,7 +4567,7 @@ document.addEventListener('DOMContentLoaded', () => {
             .sort((a, b) => b.lastWatched - a.lastWatched);
 
         const filtered = sq
-            ? entries.filter(entry => searchableVideoText(entry.path, titleForVideo(entry.path, videoData[entry.path])).includes(sq))
+            ? entries.filter(entry => catalog.search(sq, { favorites: [entry.path] }).length)
             : entries;
 
         if (filtered.length === 0) {
@@ -4148,7 +4585,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const parts = entry.path.split('/');
             parts.pop();
             const title = titleForVideo(entry.path, info);
-            const folder = formatVideoFolderPath(parts);
+            const folder = displayFolderPath(parts);
             const ago = entry.lastWatched ? timeAgo(entry.lastWatched) : '';
             const resumeTime = positions[entry.path];
             const resumeStr = resumeTime ? formatTime(resumeTime) : '';
@@ -4210,9 +4647,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     document.getElementById('close-history-modal').addEventListener('click', closeHistoryModal);
-    document.getElementById('clear-history-modal').addEventListener('click', () => {
-        if (!confirm('Clear watch history and resume positions? This cannot be undone.')) return;
-        clearWatchHistoryData();
+    document.getElementById('clear-history-modal').addEventListener('click', async () => {
+        if (!confirm('Clear viewing history and resume positions? A recovery copy will be kept on this device.')) return;
+        if (!await clearWatchHistoryData()) return;
         historySearchQuery = '';
         historySearchInput.value = '';
         renderHistoryList();
@@ -4249,7 +4686,7 @@ document.addEventListener('DOMContentLoaded', () => {
         for (const favPath of allFavPaths) {
             const videoObj = resolveVideoObj(favPath);
             if (!videoObj) continue;
-            if (sq && !searchableVideoText(favPath, videoObj.title).includes(sq)) continue;
+            if (sq && !catalog.search(sq, { favorites: [favPath] }).length) continue;
             matchCount++;
 
             const isUnfavorited = favPendingUnfavs.has(favPath);
@@ -4275,22 +4712,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Click handler (delegated)
-    favoritesContent.addEventListener('click', (e) => {
+    favoritesContent.addEventListener('click', async (e) => {
         // Toggle unfavorite/re-favorite
         const toggle = e.target.closest('.notes-fav-toggle');
         if (toggle) {
             e.stopPropagation();
             const path = toggle.dataset.path;
-            if (favPendingUnfavs.has(path)) {
-                favPendingUnfavs.delete(path);
-                state.favorites.add(path);
-            } else {
-                favPendingUnfavs.add(path);
-                state.favorites.delete(path);
-            }
-            safeStore('favoriteVideos', JSON.stringify([...state.favorites]));
-            updateNotesBadge();
-            if (state.currentVideo && state.currentVideo.path === path) updateFavBtn();
+            if (!await toggleFavorite(path)) return;
+            if (state.favorites.has(path)) favPendingUnfavs.delete(path); else favPendingUnfavs.add(path);
             renderFavoritesList();
             return;
         }
@@ -4384,7 +4813,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const parts = path.split('/');
                 parts.pop();
                 const title = titleForVideo(path, videoData[path]);
-                body += title + ' (' + formatVideoFolderPath(parts) + ')\n';
+                body += title + ' (' + parts.join(' / ') + ')\n';
                 for (const bk of withNotes) {
                     body += '  ' + formatTime(bk.t) + ' — ' + bk.n + '\n';
                 }
@@ -4407,7 +4836,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const parts = path.split('/');
                 parts.pop();
                 const title = titleForVideo(path, videoData[path]);
-                html += '<h2>' + escapeHtml(title) + ' <small style="color:#999;">' + escapeHtml(formatVideoFolderPath(parts)) + '</small></h2>';
+                html += '<h2>' + escapeHtml(title) + ' <small style="color:#999;">' + escapeHtml(parts.join(' / ')) + '</small></h2>';
                 for (const bk of bks) {
                     const noteText = bk.n ? ' — ' + bk.n : '';
                     html += '<p><span class="time">' + formatTime(bk.t) + '</span><span class="note">' + escapeHtml(noteText) + '</span></p>';
@@ -4427,10 +4856,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     // ── Notes Modal Close ─────────────────────────────
-    document.getElementById('close-notes-modal').addEventListener('click', closeNotesView);
-    notesView.addEventListener('click', (e) => {
-        if (e.target === notesView) closeNotesView();
-    });
+    document.getElementById('close-notes-modal')?.addEventListener('click', closeNotesView);
 
     // ── Notes Manager Search ─────────────────────────────
     const notesSearchInput = document.getElementById('notes-search-input');
@@ -4447,6 +4873,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (activeDialog) {
                 e.preventDefault();
                 switch (activeDialog.id) {
+                    case 'course-browser-modal': courseBrowser.close(); break;
                     case 'spotlight-overlay': closeSpotlight(); break;
                     case 'notes-view': closeNotesView(); break;
                     case 'history-modal': closeHistoryModal(); break;
@@ -4471,8 +4898,15 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        // An open dialog owns its keyboard input, including focus on its panel.
+        if (hasOpenDialog()) return;
+
+        // Native media controls also handle these keys. Handling them again here
+        // can toggle playback twice when the video element has focus.
+        if (e.target === elements.videoPlayer && [' ', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return;
+
         // Preserve native keyboard behavior for controls, links, and editable content.
-        const interactive = e.target.closest('input, select, textarea, button, a, [role="button"], [contenteditable="true"]');
+        const interactive = e.target.closest('input, select, textarea, button, summary, a, [role="button"], [contenteditable="true"]');
         if (interactive) return;
 
         // Global shortcuts
@@ -4531,6 +4965,7 @@ document.addEventListener('DOMContentLoaded', () => {
             case 'b':
             case 'B':
                 if (!videoVisible || isNaN(v.duration)) return;
+                if (theaterMode) setTheaterMode(false, { restoreFocus: false });
                 elements.addBookmarkBtn.click();
                 break;
         }

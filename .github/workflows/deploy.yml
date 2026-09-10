@@ -7,9 +7,12 @@ on:
       - '.github/workflows/deploy.yml'
       - '.gitignore'
       - 'app.js'
-      - 'audit/full-content/**'
+      - 'course-browser.js'
+      - 'course-browser.css'
       - 'course-taxonomy.js'
       - 'data.js'
+      - 'audit/full-content/**'
+      - 'scripts/validate-content-audit.mjs'
       - 'icon-*.png'
       - 'icon.svg'
       - 'index.html'
@@ -17,14 +20,27 @@ on:
       - 'og.png'
       - 'package*.json'
       - 'playback-core.js'
+      - 'notes-core.js'
+      - 'notebook.css'
+      - 'workspace.css'
+      - 'lesson-workspace.css'
+      - 'settings.css'
+      - 'settings-design.js'
+      - 'library-core.js'
+      - 'practice-store.js'
+      - 'practice-workspace.js'
+      - 'scripts/validate-library.cjs'
+      - 'scripts/validate-store.cjs'
+      - 'scripts/validate-workspace.cjs'
       - 'playwright.config.mjs'
       - 'salsa_course.js'
       - 'scripts/playback-test-server.mjs'
       - 'scripts/stage-pages.mjs'
       - 'scripts/validate-pages-package.mjs'
       - 'scripts/validate-playback.mjs'
-      - 'scripts/validate-content-audit.mjs'
       - 'scripts/validate-site.mjs'
+      - 'scripts/validate-notes.cjs'
+      - 'scripts/audit-catalog-accuracy.mjs'
       - 'style.css'
       - 'summaries/**'
       - 'sw-register.js'
@@ -60,12 +76,19 @@ jobs:
       - name: Validate static site
         run: |
           node --check app.js
+          node --check course-browser.js
           node --check course-taxonomy.js
           node --check playback-core.js
+          node --check notes-core.js
+          node --check library-core.js
+          node --check practice-store.js
+          node --check practice-workspace.js
           node --check sw.js
           node scripts/validate-site.mjs
           node scripts/validate-playback.mjs
           node scripts/validate-content-audit.mjs
+          node --test scripts/validate-notes.cjs scripts/validate-library.cjs scripts/validate-store.cjs scripts/validate-workspace.cjs
+          node scripts/audit-catalog-accuracy.mjs --no-write
           npm run test:playback
           node scripts/validate-pages-package.mjs
       - name: Configure GitHub Pages

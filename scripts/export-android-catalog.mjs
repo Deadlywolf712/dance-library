@@ -85,6 +85,9 @@ function parseCourseTaxonomy(source) {
   }
 
   assert(taxonomy && typeof taxonomy === 'object' && !Array.isArray(taxonomy), 'COURSE_TAXONOMY must be an object.');
+  // Display aliases are optional in the current web catalog. Stable folder
+  // names remain authoritative when that catalog has not supplied an alias.
+  if (taxonomy.courseDisplayNameByFolder === undefined) taxonomy.courseDisplayNameByFolder = {};
   assert(Array.isArray(taxonomy.categoryOrder), 'COURSE_TAXONOMY.categoryOrder must be an array.');
   assert(
     taxonomy.courseCategoryByFolder &&

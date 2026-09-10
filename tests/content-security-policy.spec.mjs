@@ -26,7 +26,7 @@ test('the hardened policy permits the app and blocks unapproved scripts', async 
 
   await page.goto('/');
   await expect(page.locator('#app-loader')).toHaveCount(0);
-  await expect(page.getByRole('heading', { name: 'Dance Library', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Make time to dance.', exact: true })).toBeVisible();
   await expect(page.locator('script:not([src])')).toHaveCount(0);
 
   const policy = await page.locator('meta[http-equiv="Content-Security-Policy"]').getAttribute('content');

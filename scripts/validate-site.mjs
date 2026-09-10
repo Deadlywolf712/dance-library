@@ -8,7 +8,7 @@ const read = filename => fs.readFileSync(path.join(root, filename), 'utf8');
 const fail = message => { throw new Error(message); };
 
 for (const filename of [
-  'index.html', 'style.css', 'app.js', 'course-taxonomy.js', 'playback-core.js', 'data.js', 'salsa_course.js',
+  'workspace.css', 'library-core.js', 'practice-store.js', 'practice-workspace.js', 'index.html', 'style.css', 'notebook.css', 'app.js', 'course-taxonomy.js', 'playback-core.js', 'notes-core.js', 'data.js', 'salsa_course.js',
   'manifest.json', 'sw.js', 'icon.svg', 'icon-192.png', 'icon-512.png'
 ]) {
   if (!fs.existsSync(path.join(root, filename))) fail(`Missing required asset: ${filename}`);
@@ -67,19 +67,21 @@ for (const [, themeName, body] of themeBlocks) {
   if (required.some(name => !variables[name])) fail(`Theme ${themeName} is missing required color tokens.`);
   const base = rgbFromHex(variables['bg-base']);
   const surface = rgbFromHex(variables['bg-surface']);
-  const main = rgbFromHex(variables['text-main']);
+  let main = rgbFromHex(variables['text-main']);
   let muted = rgbFromHex(variables['text-muted']);
   const accent = rgbFromHex(variables.accent);
   let pill = rgbFromHex(variables['pill-text']);
   const readable = [main, [0, 0, 0], [255, 255, 255]].sort((a, b) =>
     Math.min(contrast(b, base), contrast(b, surface)) - Math.min(contrast(a, base), contrast(a, surface))
   )[0];
+  if (Math.min(contrast(main, base), contrast(main, surface)) < 4.5) main = readable;
   if (Math.min(contrast(muted, base), contrast(muted, surface)) < 4.5) muted = readable;
   const focus = Math.min(contrast(accent, base), contrast(accent, surface)) >= 3 ? accent : readable;
   if (contrast(accent, pill) < 4.5) {
     pill = contrast(accent, [255, 255, 255]) >= contrast(accent, [0, 0, 0]) ? [255, 255, 255] : [0, 0, 0];
   }
   if (Math.min(contrast(muted, base), contrast(muted, surface)) < 4.5) fail(`Theme ${themeName} has unreadable muted text.`);
+  if (Math.min(contrast(main, base), contrast(main, surface)) < 4.5) fail(`Theme ${themeName} has unreadable main text.`);
   if (Math.min(contrast(focus, base), contrast(focus, surface)) < 3) fail(`Theme ${themeName} has an invisible focus ring.`);
   if (contrast(accent, pill) < 4.5) fail(`Theme ${themeName} has unreadable accent buttons.`);
 }
@@ -222,6 +224,7 @@ for (const lessonPath of lessonPaths) {
   }
   if (!summaries.has(lessonPath)) fail(`Lesson is missing its lazy summary: ${lessonPath}`);
 }
+
 const unavailableLessons = lessonPaths.filter(lessonPath => catalog[lessonPath].availability === 'unavailable');
 const expectedUnavailableLesson = 'Salsa Masterclass/Week 3/Spot Overturn/Spot Overturn - Explanation On2.mp4';
 if (unavailableLessons.length !== 1 || unavailableLessons[0] !== expectedUnavailableLesson) {
@@ -236,7 +239,7 @@ if (!appVersion || appVersion !== swVersion) fail('HTML asset version and servic
 const summaryVersion = app.match(/SUMMARY_ASSET_VERSION\s*=\s*(\d+)/)?.[1];
 if (summaryVersion !== swVersion) fail('Summary asset version and service-worker cache version differ.');
 if (!/m4v\|apk/.test(sw)) fail('The service worker must never cache Android installer downloads.');
-for (const asset of ['style.css', 'app.js', 'course-taxonomy.js', 'data.js', 'salsa_course.js', 'playback-core.js']) {
+for (const asset of ['style.css', 'notebook.css', 'workspace.css', 'lesson-workspace.css', 'settings.css', 'settings-design.js', 'course-browser.css', 'course-browser.js', 'app.js', 'course-taxonomy.js', 'data.js', 'salsa_course.js', 'playback-core.js', 'library-core.js', 'notes-core.js', 'practice-store.js', 'practice-workspace.js', 'sw-register.js']) {
   if (!index.includes(`${asset}?v=${swVersion}`) || !sw.includes(`./${asset}?v=${swVersion}`)) {
     fail(`${asset} must use the current HTML and service-worker asset version.`);
   }

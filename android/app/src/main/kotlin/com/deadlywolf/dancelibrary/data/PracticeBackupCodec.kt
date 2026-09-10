@@ -18,6 +18,7 @@ internal data class ImportedPracticeBookmark(
     val positionMs: Long,
     val note: String,
     val timestampMs: Long,
+    val extra: JsonObject = JsonObject(),
 )
 
 internal data class DecodedPracticeBackup(
@@ -34,6 +35,9 @@ internal data class DecodedPracticeBackup(
     val hasPullZoneOverride: Boolean,
     val pullZoneOverride: String?,
     val unknownLegacyPaths: Set<String>,
+    val workspace: PracticeWorkspace?,
+    val extra: JsonObject,
+    val unmappedLegacy: JsonObject,
 )
 
 class BackupFormatException(message: String) : IllegalArgumentException(message)
@@ -58,6 +62,15 @@ class PracticeBackupCodec(
         if (RECOGNIZED_KEYS.none(root::has)) {
             throw BackupFormatException("No recognizable Dance Library data was found.")
         }
+        for (key in listOf("schemaVersion", "nativeSchemaVersion")) {
+            if (root.has(key)) {
+                val value = root.get(key)
+                if (!value.isJsonPrimitive || !value.asJsonPrimitive.isNumber || value.asDouble !in listOf(1.0, 2.0)) {
+                    throw BackupFormatException("Unsupported $key. Keep the original backup and update the app.")
+                }
+            }
+        }
+        val workspace = root.get("practiceData")?.let(PracticeWorkspaceCodec::decode)
 
         val unknownPaths = linkedSetOf<String>()
         fun lessonIdFor(path: String): String? {
@@ -111,6 +124,9 @@ class PracticeBackupCodec(
             hasPullZoneOverride = hasPullZoneOverride,
             pullZoneOverride = pullZoneOverride,
             unknownLegacyPaths = unknownPaths,
+            workspace = workspace,
+            extra = PracticeWorkspaceCodec.extras(root, RECOGNIZED_KEYS + setOf("exportedAt", "schemaVersion", "nativeSchemaVersion", "summaries")),
+            unmappedLegacy = UnmappedLegacyCodec.capture(root, catalog),
         )
     }
 
@@ -120,9 +136,16 @@ class PracticeBackupCodec(
         options: PracticeExportOptions = PracticeExportOptions(),
         exportedAtMs: Long = System.currentTimeMillis(),
     ): BackupExportResult {
-        val root = JsonObject().apply {
+        if (snapshot.storageReadError != null) throw BackupFormatException(snapshot.storageReadError)
+        if (options.includeWorkspace && snapshot.workspaceReadError != null) throw BackupFormatException(snapshot.workspaceReadError)
+        val root = (if (options.lessonIds == null) snapshot.backupExtra.deepCopy() else JsonObject()).apply {
             addProperty("exportedAt", formatIsoTimestamp(exportedAtMs))
             addProperty("nativeSchemaVersion", BACKUP_SCHEMA_VERSION)
+            addProperty("schemaVersion", 2)
+        }
+        if (options.includeWorkspace) {
+            val paths = options.lessonIds?.mapNotNull { catalog.referenceForLessonId(it)?.legacyPath }?.toSet()
+            root.add("practiceData", PracticeWorkspaceCodec.encode(PracticeWorkspaceCodec.scoped(snapshot.workspace, paths)))
         }
         val skipped = linkedSetOf<String>()
 
@@ -141,7 +164,7 @@ class PracticeBackupCodec(
                 .forEach { (legacyPath, _, bookmarks) ->
                     val values = JsonArray()
                     bookmarks.sortedBy(PracticeBookmark::positionMs).forEach { bookmark ->
-                        values.add(JsonObject().apply {
+                        values.add((bookmark.extra?.deepCopy() ?: JsonObject()).apply {
                             addProperty("t", bookmark.positionMs / 1_000.0)
                             addProperty("n", bookmark.note)
                             addProperty("ts", bookmark.updatedAtMs)
@@ -196,7 +219,8 @@ class PracticeBackupCodec(
             ?.let { root.addProperty("lastLessonPath", it) }
 
         return BackupExportResult(
-            content = GsonBuilder().setPrettyPrinting().create().toJson(root) + "\n",
+            content = GsonBuilder().serializeNulls().setPrettyPrinting().create()
+                .toJson(UnmappedLegacyCodec.combineExport(root, UnmappedLegacyCodec.forOptions(snapshot.unmappedLegacy, options))) + "\n",
             skippedLessonIds = skipped,
         )
     }
@@ -207,6 +231,7 @@ class PracticeBackupCodec(
         options: PracticeExportOptions = PracticeExportOptions(),
         exportedAtMs: Long = System.currentTimeMillis(),
     ): BackupExportResult {
+        if (snapshot.storageReadError != null) throw BackupFormatException(snapshot.storageReadError)
         val skipped = linkedSetOf<String>()
         fun referenceFor(lessonId: String): BackupLessonReference? {
             if (options.lessonIds != null && lessonId !in options.lessonIds) return null
@@ -216,6 +241,28 @@ class PracticeBackupCodec(
         val markdown = buildString {
             append("# Dance Library Notes\n\n")
             append("_Exported ").append(formatDate(exportedAtMs)).append("_\n\n")
+            if (options.includeWorkspace) {
+                if (snapshot.workspaceReadError != null) throw BackupFormatException(snapshot.workspaceReadError)
+                val paths = options.lessonIds?.mapNotNull { catalog.referenceForLessonId(it)?.legacyPath }?.toSet()
+                val workspace = PracticeWorkspaceCodec.scoped(snapshot.workspace, paths)
+                append("## Practice plan\n\n")
+                workspace.queue.forEach { path ->
+                    append("- ").append(escapeMarkdown(path))
+                    if (path in workspace.completed) append(" — completed")
+                    append('\n')
+                }
+                workspace.segments.forEach { segment ->
+                    append("- **").append(escapeMarkdown(segment.title)).append("** — ")
+                        .append(escapeMarkdown(segment.path)).append(" [")
+                        .append(formatPlaybackTime((segment.start * 1000).toLong())).append("–")
+                        .append(formatPlaybackTime((segment.end * 1000).toLong())).append("] at ")
+                        .append(segment.speed).append("×\n")
+                }
+                workspace.reflections.forEach { (path, reflection) ->
+                    append("\n### ").append(escapeMarkdown(path)).append("\n\n").append(reflection.text).append("\n")
+                }
+                append('\n')
+            }
 
             if (options.includeFavorites) {
                 val favorites = snapshot.favorites.mapNotNull(::referenceFor).sortedBy(BackupLessonReference::legacyPath)
@@ -247,6 +294,22 @@ class PracticeBackupCodec(
                                 append("- **[").append(time).append("]** ")
                                     .append(escapeMarkdown(bookmark.note).replace('\n', ' ')).append("\n")
                             }
+                        }
+                        append('\n')
+                    }
+                }
+                val retained = UnmappedLegacyCodec.forOptions(snapshot.unmappedLegacy, options).getAsJsonObject("videoBookmarks")
+                if (retained != null && retained.size() > 0) {
+                    append("## Notes for lessons outside this catalog\n\n")
+                    retained.entrySet().sortedBy { it.key }.forEach { (path, entries) ->
+                        append("### ").append(escapeMarkdown(path)).append("\n\n")
+                        entries.asJsonArray.forEach { entry ->
+                            val seconds = if (entry.isJsonObject) entry.asJsonObject.get("t").asDouble else entry.asDouble
+                            val time = if (seconds <= Long.MAX_VALUE / 1000.0) formatPlaybackTime((seconds * 1000.0).toLong()) else "${seconds}s"
+                            val note = if (entry.isJsonObject) entry.asJsonObject.get("n")?.asString.orEmpty() else ""
+                            append("- **[").append(time).append("]**")
+                            if (note.isNotEmpty()) append(' ').append(escapeMarkdown(note).replace("\n", "\n  "))
+                            append('\n')
                         }
                         append('\n')
                     }
@@ -361,6 +424,7 @@ class PracticeBackupCodec(
                         positionMs = secondsToMilliseconds(positionSeconds),
                         note = note,
                         timestampMs = timestampMs,
+                        extra = if (element.isJsonObject) PracticeWorkspaceCodec.extras(element.asJsonObject, setOf("t", "n", "ts")) else JsonObject(),
                     )
                 }
                 if (bookmarks.isNotEmpty()) put(lessonId, bookmarks)
@@ -406,7 +470,7 @@ class PracticeBackupCodec(
     }
 
     private companion object {
-        const val BACKUP_SCHEMA_VERSION = 1
+        const val BACKUP_SCHEMA_VERSION = 2
         val RECOGNIZED_KEYS = setOf(
             "watchedVideos",
             "videoBookmarks",
@@ -420,6 +484,7 @@ class PracticeBackupCodec(
             "bunnyPullZone",
             "pullZoneOverride",
             "lastLessonPath",
+            "practiceData",
         )
     }
 }

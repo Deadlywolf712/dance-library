@@ -26,9 +26,15 @@ async function setup(seed = {}) {
     const context = await browser.newContext({ bypassCSP: true, viewport: { width: 1400, height: 1000 } });
     const page = await context.newPage();
     await page.route('**/*', route => route.abort());
-    const html = fs.readFileSync(path.resolve(__dirname, '../index.html'), 'utf8')
-        .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
-    await page.setContent(html);
+    const html = fs.readFileSync(path.resolve(__dirname, '../index.html'), 'utf8');
+    await page.evaluate(source => {
+        // Parse the repository fixture without executing its application scripts.
+        // Mount only its markup; each controller under test is loaded explicitly below.
+        const fixture = new DOMParser().parseFromString(source, 'text/html');
+        for (const script of fixture.querySelectorAll('script')) script.remove();
+        document.replaceChild(document.adoptNode(fixture.documentElement), document.documentElement);
+    }, html);
+    assert.equal(await page.locator('script').count(), 0);
     for (const name of ['practice-store.js', 'library-core.js', 'practice-workspace.js']) {
         await page.addScriptTag({ content: fs.readFileSync(path.join(__dirname, '..', name), 'utf8') });
     }

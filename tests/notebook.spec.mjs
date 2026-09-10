@@ -326,7 +326,10 @@ test('a failed deletion preserves both the bookmark and the previous Undo record
   await seedAndOpen(page);
   await openNotebook(page);
   await noteRow(page).locator('.notes-item-delete').click();
+  // The click dispatch finishes before the Web Locks transaction commits.
+  await expect(noteRow(page)).toHaveCount(0);
   const previousUndo = await page.evaluate(() => localStorage.getItem('danceLibraryDeletedBookmark'));
+  expect(previousUndo).not.toBeNull();
   const previousNotes = await readBookmarks(page);
   await page.evaluate(() => {
     const original = Storage.prototype.setItem;
@@ -336,6 +339,7 @@ test('a failed deletion preserves both the bookmark and the previous Undo record
     };
   });
   await noteRow(page, LESSON_A, 30).locator('.notes-item-delete').click();
+  await expect(page.locator('#storage-status-copy')).toHaveText('Full');
   expect(await page.evaluate(() => localStorage.getItem('danceLibraryDeletedBookmark'))).toBe(previousUndo);
   expect(await readBookmarks(page)).toEqual(previousNotes);
 });
@@ -400,9 +404,11 @@ test('player notes support multiline writing and explicitly clearing a saved not
   await editor.pressSequentially('Second cue');
   await expect(editor).toHaveValue('First cue\nSecond cue');
   await page.locator('#bookmark-edit-save').click();
+  await expect(editor).toBeHidden();
   expect((await readBookmarks(page))[LESSON_A][0].n).toBe('First cue\nSecond cue');
   await page.locator('#bookmarks-list .bookmark-edit-icon').first().click();
   await editor.fill('');
   await page.locator('#bookmark-edit-save').click();
+  await expect(editor).toBeHidden();
   expect((await readBookmarks(page))[LESSON_A][0].n).toBe('');
 });

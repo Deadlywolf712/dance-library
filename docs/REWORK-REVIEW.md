@@ -22,7 +22,7 @@ The preceding UI review passed 70 web module/data tests and all 103 then-current
 
 The reviewed Android preview passed 88 unit tests, lint, debug/test builds, and a minified release build. Broader emulator suites covered persistence, backups, playback, navigation, and the practice workspace. Final affected editor cases passed on phone, tablet-sized, and landscape-sized viewports, with an additional strict offline Notebook check. Actual pointer input with the Android keyboard open verified note, search, reflection, and segment actions. The temporary emulator was restored and stopped.
 
-Publication adds focused regressions for the audited course aliases and reruns the web catalog/course checks and Android build/unit/lint gates. GitHub Actions verifies the integrated branch before deployment. The pull request and Actions runs record the exact publication results.
+Publication adds focused regressions for the audited course aliases: the integrated suite contains 71 web module/data cases, 106 browser cases, and 90 Android unit tests. The content audit passed for all 795 lessons; all 22 targeted browser cases passed across the batch and focused rerun. The fresh Android publication build passed all 90 unit tests, lint with zero errors, debug/test APK assembly, and release/R8 assembly. GitHub Actions verifies the integrated branch before deployment. The pull request and Actions runs record the full publication results.
 
 ## Android preview and limits
 

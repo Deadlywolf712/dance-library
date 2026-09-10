@@ -12,6 +12,6 @@
     "audit:content": "node scripts/validate-content-audit.mjs"
   },
   "devDependencies": {
-    "@playwright/test": "1.61.1"
+    "@playwright/test": "1.62.1"
   }
 }

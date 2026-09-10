@@ -41,7 +41,7 @@ private val ArcticColors = lightColorScheme(
     outline = Color(0xFF738597),
     outlineVariant = Color(0xFFBEC8D2),
     error = Color(0xFFBA1A1A),
-)
+).withReadableText()
 
 private val DanceTypography = Typography(
     headlineLarge = TextStyle(
@@ -134,7 +134,72 @@ internal fun ThemeSpec.toColorScheme(): ColorScheme {
         onSurfaceVariant = mutedText,
         outline = border,
         outlineVariant = blend(border, background, 0.52f),
+        surfaceContainer = blend(surfaceHover, background, 0.35f),
+        surfaceContainerLow = blend(surface, background, 0.65f),
+        surfaceContainerHigh = blend(surfaceHover, background, 0.65f),
+        surfaceContainerHighest = surfaceHover,
+        surfaceContainerLowest = background,
+    ).withReadableText()
+}
+
+/** Web accent/muted colors also become small native text; retain their hue while
+ * increasing contrast on the actual native surfaces where those roles are used. */
+private fun ColorScheme.withReadableText(): ColorScheme {
+    // A few medium-dark themes have tinted cards too bright for white text but
+    // a page too dark for black text. Bring only those surfaces toward the page
+    // before selecting shared text colors; changing text alone cannot fix them.
+    val ink = readableOn(background)
+    fun readableSurface(surface: Color): Color {
+        if (colorContrast(ink, surface) >= 4.5f) return surface
+        var low = 0f
+        var high = 1f
+        repeat(24) {
+            val midpoint = (low + high) / 2f
+            if (colorContrast(ink, blend(background, surface, midpoint)) >= 4.5f) high = midpoint else low = midpoint
+        }
+        return blend(background, surface, high)
+    }
+    val normalized = copy(
+        surface = readableSurface(surface), surfaceVariant = readableSurface(surfaceVariant),
+        primaryContainer = readableSurface(primaryContainer), secondaryContainer = readableSurface(secondaryContainer),
+        surfaceContainer = readableSurface(surfaceContainer), surfaceContainerLow = readableSurface(surfaceContainerLow),
+        surfaceContainerHigh = readableSurface(surfaceContainerHigh), surfaceContainerHighest = readableSurface(surfaceContainerHighest),
     )
+    val textSurfaces = listOf(background, normalized.surface, normalized.surfaceVariant, normalized.primaryContainer, normalized.secondaryContainer,
+        normalized.surfaceContainer, normalized.surfaceContainerLow, normalized.surfaceContainerHigh, normalized.surfaceContainerHighest)
+    val accessiblePrimary = readableText(primary, textSurfaces)
+    val accessibleSecondary = readableText(secondary, textSurfaces)
+    return normalized.copy(
+        primary = accessiblePrimary, onPrimary = readableOn(accessiblePrimary),
+        secondary = accessibleSecondary, onSecondary = readableOn(accessibleSecondary),
+        onBackground = readableText(onBackground, listOf(background)),
+        onSurface = readableText(onSurface, textSurfaces),
+        onSurfaceVariant = readableText(onSurfaceVariant, textSurfaces),
+        onPrimaryContainer = readableOn(normalized.primaryContainer),
+        onSecondaryContainer = readableOn(normalized.secondaryContainer),
+        error = readableText(error, textSurfaces),
+    )
+}
+
+internal fun colorContrast(foreground: Color, background: Color): Float {
+    val opaqueForeground = blend(foreground, background, foreground.alpha)
+    val first = opaqueForeground.luminance()
+    val second = background.luminance()
+    return (maxOf(first, second) + 0.05f) / (minOf(first, second) + 0.05f)
+}
+
+internal fun readableText(requested: Color, backgrounds: List<Color>, minimum: Float = 4.5f): Color {
+    fun contrast(color: Color) = backgrounds.minOf { colorContrast(color, it) }
+    val opaque = requested.copy(alpha = 1f)
+    if (contrast(opaque) >= minimum) return opaque
+    val target = if (contrast(Color.Black) >= contrast(Color.White)) Color.Black else Color.White
+    var low = 0f
+    var high = 1f
+    repeat(24) {
+        val midpoint = (low + high) / 2f
+        if (contrast(blend(target, opaque, midpoint)) >= minimum) high = midpoint else low = midpoint
+    }
+    return blend(target, opaque, high)
 }
 
 internal fun String?.toComposeColor(): Color? {
@@ -175,7 +240,8 @@ private fun parseRgbColor(value: String): Color? {
     }.getOrNull()
 }
 
-private fun readableOn(color: Color): Color = if (color.luminance() > 0.46f) Color(0xFF101418) else Color.White
+private fun readableOn(color: Color): Color =
+    if (colorContrast(Color.Black, color) >= colorContrast(Color.White, color)) Color.Black else Color.White
 
 private fun blend(foreground: Color, background: Color, foregroundAmount: Float): Color {
     val amount = foregroundAmount.coerceIn(0f, 1f)

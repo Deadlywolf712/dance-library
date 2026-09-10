@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 2,
+  "exportedAt": "2027-01-15T08:00:00.000Z",
+  "favoriteVideos": [
+    "Known.mp4"
+  ],
+  "watchedVideos": [
+    "Known.mp4"
+  ],
+  "videoBookmarks": {
+    "Known.mp4": [
+      {
+        "t": 4.5,
+        "n": "One\\nTwo",
+        "ts": 1800000006000
+      }
+    ]
+  },
+  "practiceData": {
+    "version": 1,
+    "queue": [
+      "Unknown/Second.mp4",
+      "Known.mp4",
+      "Unknown/Third.mp4"
+    ],
+    "segments": [
+      {
+        "id": "s1",
+        "path": "Known.mp4",
+        "title": "Frame and turn",
+        "start": 1.5,
+        "end": 8.25,
+        "speed": 0.5,
+        "createdAt": 1800000003000,
+        "priority": "local",
+        "incomingOnly": null,
+        "localOnly": {
+          "beats": [
+            1,
+            2,
+            3
+          ]
+        }
+      }
+    ],
+    "completed": {
+      "Unknown/Second.mp4": 1800000001000,
+      "Known.mp4": 1800000004000
+    },
+    "reflections": {
+      "Known.mp4": {
+        "text": "First line\nSecond line",
+        "updatedAt": 1800000002000,
+        "tags": [
+          "posture"
+        ]
+      },
+      "Unknown/Third.mp4": {
+        "text": "Uncatalogued lesson reflection 🎵",
+        "updatedAt": 1800000005000,
+        "future": {
+          "reviewed": false
+        }
+      }
+    },
+    "futureIncoming": [
+      1,
+      "two",
+      null
+    ],
+    "futureWorkspace": {
+      "mode": "private"
+    },
+    "__proto__": {
+      "literal": true
+    }
+  },
+  "futureEnvelope": {
+    "preserve": [
+      "unknown",
+      null
+    ]
+  }
+}

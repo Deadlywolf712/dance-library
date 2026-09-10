@@ -1,6 +1,8 @@
 package com.deadlywolf.dancelibrary.data
 
 import com.google.gson.annotations.SerializedName
+import com.google.gson.annotations.JsonAdapter
+import com.google.gson.JsonObject
 
 data class PracticeSnapshot(
     val favorites: Set<String> = emptySet(),
@@ -14,6 +16,14 @@ data class PracticeSnapshot(
     val collapsedSections: Map<String, Boolean> = emptyMap(),
     val notesBadgeSeen: Long = 0L,
     val pullZoneOverride: String? = null,
+    val workspace: PracticeWorkspace = PracticeWorkspace(),
+    val workspaceReadError: String? = null,
+    val storageReadError: String? = null,
+    val reflectionDrafts: Map<String, PracticeReflectionDraft> = emptyMap(),
+    val noteDrafts: Map<String, PracticeNoteDraft> = emptyMap(),
+    val deletedBookmark: PracticeBookmark? = null,
+    val backupExtra: JsonObject = JsonObject(),
+    val unmappedLegacy: JsonObject = JsonObject(),
 ) {
     val bookmarkCount: Int
         get() = bookmarks.values.sumOf(List<PracticeBookmark>::size)
@@ -29,6 +39,46 @@ data class PracticeBookmark(
     @SerializedName("note") val note: String = "",
     @SerializedName("createdAtMs") val createdAtMs: Long,
     @SerializedName("updatedAtMs") val updatedAtMs: Long = createdAtMs,
+    @SerializedName("extra") @JsonAdapter(NullableBookmarkMetadataAdapter::class) val extra: JsonObject? = null,
+)
+
+data class PracticeWorkspace(
+    val queue: List<String> = emptyList(),
+    val segments: List<PracticeSegment> = emptyList(),
+    val completed: Map<String, Long> = emptyMap(),
+    val reflections: Map<String, PracticeReflection> = emptyMap(),
+    val extra: JsonObject = JsonObject(),
+    val hasReflections: Boolean = true,
+)
+
+data class PracticeSegment(
+    val id: String,
+    val path: String,
+    val title: String,
+    val start: Double,
+    val end: Double,
+    val speed: Double,
+    val createdAt: Long,
+    val extra: JsonObject = JsonObject(),
+)
+
+data class PracticeReflection(
+    @SerializedName("text") val text: String,
+    @SerializedName("updatedAt") val updatedAt: Long,
+    @SerializedName("extra") val extra: JsonObject = JsonObject(),
+)
+
+data class PracticeReflectionDraft(
+    @SerializedName("text") val text: String,
+    @SerializedName("expected") val expected: PracticeReflection?,
+    @SerializedName("updatedAt") val updatedAt: Long,
+)
+data class PracticeNoteDraft(
+    @SerializedName("lessonId") val lessonId: String,
+    @SerializedName("bookmarkId") val bookmarkId: String,
+    @SerializedName("text") val text: String,
+    @SerializedName("expected") val expected: PracticeBookmark?,
+    @SerializedName("updatedAt") val updatedAt: Long,
 )
 
 enum class PracticeReset {
@@ -120,6 +170,7 @@ data class PracticeExportOptions(
     val includeWatchHistory: Boolean = true,
     val includeSettings: Boolean = true,
     val lessonIds: Set<String>? = null,
+    val includeWorkspace: Boolean = true,
 )
 
 data class BackupExportResult(
@@ -137,11 +188,14 @@ data class BackupImportReport(
     val bookmarksUpdated: Int = 0,
     val duplicateBookmarksSkipped: Int = 0,
     val settingsUpdated: Int = 0,
+    val workspaceItemsChanged: Int = 0,
     val unknownLegacyPaths: Set<String> = emptySet(),
     val message: String? = null,
 )
 
 const val DEFAULT_THEME_ID = "arctic"
-const val MAX_UI_NOTE_LENGTH = 120
+const val MAX_UI_NOTE_LENGTH = 2_000
 const val MAX_IMPORTED_NOTE_LENGTH = 2_000
+const val MAX_REFLECTION_LENGTH = 10_000
+const val MAX_WORKSPACE_ITEMS = 1_000
 const val MAX_BACKUP_BYTES = 10 * 1024 * 1024

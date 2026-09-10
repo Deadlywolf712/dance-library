@@ -8,6 +8,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -20,7 +22,6 @@ import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -36,20 +37,21 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.deadlywolf.dancelibrary.model.Lesson
-import com.deadlywolf.dancelibrary.model.isAvailable
 import java.text.DateFormat
 import java.util.Date
 import java.util.Locale
 import kotlin.math.max
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun LessonRow(
     lesson: Lesson,
     favorite: Boolean,
     watched: Boolean,
     resumePositionMs: Long?,
+    completed: Boolean = false,
     bookmarkCount: Int = 0,
-    subtitle: String = lesson.courseDisplayName,
+    subtitle: String = lesson.course,
     selected: Boolean = false,
     onClick: () -> Unit,
     onToggleFavorite: () -> Unit,
@@ -78,19 +80,14 @@ internal fun LessonRow(
                     .size(42.dp)
                     .clip(RoundedCornerShape(13.dp))
                     .background(
-                        if (!lesson.isAvailable) MaterialTheme.colorScheme.errorContainer
-                        else if (watched) MaterialTheme.colorScheme.secondaryContainer
+                        if (completed) MaterialTheme.colorScheme.secondaryContainer
                         else MaterialTheme.colorScheme.surfaceVariant,
                     ),
             ) {
                 Icon(
-                    if (!lesson.isAvailable) Icons.Rounded.WarningAmber
-                    else if (watched) Icons.Rounded.CheckCircle
-                    else Icons.Rounded.PlayArrow,
+                    if (completed) Icons.Rounded.CheckCircle else Icons.Rounded.PlayArrow,
                     contentDescription = null,
-                    tint = if (!lesson.isAvailable) MaterialTheme.colorScheme.error
-                    else if (watched) MaterialTheme.colorScheme.secondary
-                    else MaterialTheme.colorScheme.primary,
+                    tint = if (completed) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary,
                 )
             }
             Spacer(Modifier.width(11.dp))
@@ -110,14 +107,10 @@ internal fun LessonRow(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                if (!lesson.isAvailable) {
-                    Text(
-                        "Correct source unavailable",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(9.dp), verticalAlignment = Alignment.CenterVertically) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(9.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    if (completed || watched) {
+                        Text(if (completed) "Completed" else "Viewed", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                     resumePositionMs?.let {
                         Text("Resume ${formatPlaybackTime(it)}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.secondary)
                     }

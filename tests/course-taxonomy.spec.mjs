@@ -20,51 +20,20 @@ test('Carolina Rosa and Marco Espejo are listed only under Bachata', async ({ pa
   ]);
 
   await page.getByRole('button', { name: /^Open Bachata, \d+ lessons$/ }).click();
-  const bachataCourseHeadings = page.locator('#course-grid > .folder-tile h3');
   for (const courseFolder of [
     'Carolina Rosa - Advanced',
     'Carolina Rosa - Beginner',
     'Carolina Rosa - Intermediate',
-    'Marco Espejo — Marco Espejo Style (Open Level)'
+    'Marco Espejo - Marco Espejo Style'
   ]) {
-    await expect(bachataCourseHeadings.filter({ hasText: courseFolder })).toHaveText(courseFolder);
+    await expect(page.getByRole('button', { name: new RegExp(`^Open ${courseFolder}, \\d+ lessons$`) })).toBeVisible();
   }
 
   await page.getByRole('link', { name: 'Library Home', exact: true }).click();
   await page.getByRole('button', { name: /^Open Salsa, \d+ lessons$/ }).click();
-  const salsaCourseNames = await page.locator('#course-grid > .folder-tile h3').allTextContents();
+  const salsaCourseNames = await page.locator('#course-grid > .folder-tile .course-teacher').allTextContents();
   expect(salsaCourseNames.some(name => name.startsWith('Carolina Rosa'))).toBe(false);
   expect(salsaCourseNames.some(name => name.startsWith('Marco Espejo'))).toBe(false);
-});
-
-test('source-confirmed course aliases display while stable folder paths remain unchanged', async ({ page }) => {
-  const arthurStableName = 'Arthur  Oksana - Zouk Beginner';
-  const arthurDisplayName = 'Arthur & Oksana — Zouk Beginner';
-  const isabelleDisplayName = 'Isabelle & Felicien — Kizomba Beginner';
-  const pabloDisplayName = 'Pablo & Raquel — Intermediate/Advanced';
-
-  await page.getByRole('button', { name: /^Open Zouk, \d+ lessons$/ }).click();
-  const arthurTile = page.locator('#course-grid > .folder-tile').filter({
-    has: page.getByRole('heading', { name: arthurDisplayName, exact: true })
-  });
-  await expect(arthurTile.locator('h3')).toHaveText(arthurDisplayName);
-  await expect(arthurTile).toHaveAttribute('aria-label', new RegExp(`^Open ${arthurDisplayName}, \\d+ lessons$`));
-  await arthurTile.click();
-
-  await expect(page.locator('#home-breadcrumbs')).toContainText(arthurDisplayName);
-  await expect(page.locator('#course-grid .tile-star-btn').first()).toHaveAttribute(
-    'data-path',
-    new RegExp(`^${arthurStableName}/`)
-  );
-
-  await page.getByRole('link', { name: 'Library Home', exact: true }).click();
-  await page.getByRole('button', { name: /^Open Bachata, \d+ lessons$/ }).click();
-  await expect(page.getByRole('heading', { name: pabloDisplayName, exact: true })).toBeVisible();
-
-  await page.locator('#home-search-btn').click();
-  await page.locator('#spotlight-input').fill(isabelleDisplayName);
-  const isabelleResult = page.locator('.spotlight-result').first();
-  await expect(isabelleResult).toContainText(isabelleDisplayName);
 });
 
 test('a corrected lesson title keeps its stable legacy catalog path', async ({ page }) => {
@@ -99,91 +68,67 @@ test('history and notes search use corrected display titles as well as stable pa
   await expect(page.locator('.history-item')).toHaveAttribute('data-path', legacyPath);
   await page.locator('#close-history-modal').click();
 
-  await page.locator('#mobile-notes-btn').evaluate(button => button.click());
+  await page.locator('[data-workspace-view="notes"]').click();
   await page.locator('#notes-search-input').fill('3x3');
   await expect(page.locator('.notes-video-title')).toHaveText('09 - 3X3 Steps');
   await expect(page.locator('.notes-video-title')).toHaveAttribute('data-path', legacyPath);
 });
 
-test('the confirmed duplicate asset is quarantined without losing its stable lesson identity', async ({ page }) => {
+test('audited lesson titles and course aliases remain searchable with stable source paths', async ({ page }) => {
+  const legacyPath = 'Adolfo Indacochea  Tania Cannarsa - Salsa On2 Advanced/06 - Mixing Hook Step  Rotation.mp4';
+  await page.locator('#home-search-btn').click();
+  await page.locator('#spotlight-input').fill('Mixing Hook Step & Rotation');
+  await expect(page.locator('.spotlight-result')).toHaveCount(1);
+  await expect(page.locator('.spotlight-result-title')).toHaveText('06 - Mixing Hook Step & Rotation');
+  await page.locator('.spotlight-result').click();
+  await expect.poll(() => page.evaluate(() => decodeURIComponent(location.hash.split('&')[0].slice('#video='.length)))).toBe(legacyPath);
+  await expect(page.locator('#video-title')).toHaveText('06 - Mixing Hook Step & Rotation');
+
+  await page.goto('/');
+  await page.locator('#home-search-btn').click();
+  await page.locator('#spotlight-input').fill('Isabelle & Felicien — Kizomba Beginner');
+  await expect(page.locator('.spotlight-result').first()).toContainText('Isabelle & Felicien — Kizomba Beginner');
+});
+
+test('quarantined source cannot play or leak its guide through lesson and full-library exports', async ({ page }) => {
   const legacyPath = 'Salsa Masterclass/Week 3/Spot Overturn/Spot Overturn - Explanation On2.mp4';
   const availablePath = 'Adolfo Indacochea  Tania Cannarsa - Salsa On2 Advanced/01 - Syncopation.mp4';
   let bunnyRequests = 0;
-  await page.route('https://*.b-cdn.net/**', route => {
-    bunnyRequests += 1;
-    return route.abort();
-  });
-
+  await page.route('https://*.b-cdn.net/**', route => { bunnyRequests += 1; return route.abort(); });
   await page.goto(`/#video=${encodeURIComponent(legacyPath)}`);
   await expect(page.locator('body')).toHaveAttribute('data-app-ready', 'true');
   await expect(page.locator('#video-title')).toHaveText('Spot Overturn - Explanation On2');
   await expect(page.locator('#video-unavailable')).toBeVisible();
-  await expect(page.locator('#video-unavailable')).toContainText('Correct source unavailable');
   await expect(page.locator('#video-unavailable-reason')).toContainText('exact duplicate');
   await expect(page.locator('#video-player')).toBeHidden();
   await expect(page.locator('.video-controls-bar')).toBeHidden();
-  await expect(page.locator('#video-summary')).toContainText('Why this lesson is unavailable');
+  await page.locator('#practice-tab-guide').click();
+  await expect(page.locator('#video-summary')).toContainText('guide is withheld');
   expect(bunnyRequests).toBe(0);
-  const watched = await page.evaluate(() => JSON.parse(localStorage.getItem('watchedVideos') || '[]'));
-  expect(watched).not.toContain(legacyPath);
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('watchedVideos') || '[]'))).not.toContain(legacyPath);
+  await page.evaluate(path => { videoData[path].summary = 'SENTINEL INCORRECT DUPLICATE SUMMARY'; }, legacyPath);
 
-  await page.evaluate(path => {
-    videoData[path].summary = 'SENTINEL INCORRECT DUPLICATE SUMMARY';
-  }, legacyPath);
-  const openExport = page.locator('#video-view .open-export-modal-btn').first();
-  await openExport.evaluate(button => button.click());
-  await expect(page.locator('#exp-summaries')).toBeDisabled();
-  await expect(page.locator('#exp-summaries-label')).toContainText('Summary unavailable');
-
-  await page.evaluate(() => {
-    const summaries = document.getElementById('exp-summaries');
-    summaries.disabled = false;
-    summaries.checked = true;
-    document.querySelector('input[name="export-format"][value="json"]').checked = true;
-  });
-  const jsonDownloadPromise = page.waitForEvent('download');
-  await page.locator('#do-export').click();
-  const jsonDownload = await jsonDownloadPromise;
-  const jsonExport = JSON.parse(await readFile(await jsonDownload.path(), 'utf8'));
-  expect(jsonExport.summaries).toEqual({});
-
-  await openExport.evaluate(button => button.click());
-  await page.evaluate(() => {
-    const summaries = document.getElementById('exp-summaries');
-    summaries.disabled = false;
-    summaries.checked = true;
-    document.querySelector('input[name="export-format"][value="markdown"]').checked = true;
-  });
-  const markdownDownloadPromise = page.waitForEvent('download');
-  await page.locator('#do-export').click();
-  const markdownDownload = await markdownDownloadPromise;
-  const markdownExport = await readFile(await markdownDownload.path(), 'utf8');
-  expect(markdownExport).not.toContain('SENTINEL INCORRECT DUPLICATE SUMMARY');
-  expect(markdownExport).not.toContain('## Video Summaries');
-
-  await openExport.evaluate(button => button.click());
-  await page.locator('#exp-entire-library').check();
-  await expect(page.locator('#exp-summaries')).toBeEnabled();
-  await expect(page.locator('#exp-summaries')).toBeChecked();
-  await expect(page.locator('#exp-summaries-label')).toContainText('All available video summaries');
-  await page.locator('input[name="export-format"][value="json"]').check();
-  const libraryJsonDownloadPromise = page.waitForEvent('download');
-  await page.locator('#do-export').click();
-  const libraryJsonDownload = await libraryJsonDownloadPromise;
-  const libraryJson = JSON.parse(await readFile(await libraryJsonDownload.path(), 'utf8'));
-  expect(Object.keys(libraryJson.summaries)).toHaveLength(794);
-  expect(libraryJson.summaries[availablePath]).toBeTruthy();
-  expect(libraryJson.summaries).not.toHaveProperty(legacyPath);
-
-  await openExport.evaluate(button => button.click());
-  await page.locator('#exp-entire-library').check();
-  await page.locator('input[name="export-format"][value="markdown"]').check();
-  const libraryMarkdownDownloadPromise = page.waitForEvent('download');
-  await page.locator('#do-export').click();
-  const libraryMarkdownDownload = await libraryMarkdownDownloadPromise;
-  const libraryMarkdown = await readFile(await libraryMarkdownDownload.path(), 'utf8');
-  expect(libraryMarkdown).toContain('## Video Summaries');
-  expect(libraryMarkdown).toContain('### 01 - Syncopation');
-  expect(libraryMarkdown).not.toContain('SENTINEL INCORRECT DUPLICATE SUMMARY');
+  const openExport = page.locator('#video-view .open-export-modal-btn');
+  for (const entireLibrary of [false, true]) {
+    for (const format of ['json', 'markdown']) {
+      await openExport.evaluate(button => button.click());
+      await page.locator('#exp-entire-library').setChecked(entireLibrary);
+      await page.locator('#exp-summaries').check();
+      await page.locator(`input[name="export-format"][value="${format}"]`).check();
+      const downloadPromise = page.waitForEvent('download');
+      await page.locator('#do-export').click();
+      const exported = await readFile(await (await downloadPromise).path(), 'utf8');
+      expect(exported).not.toContain('SENTINEL INCORRECT DUPLICATE SUMMARY');
+      if (format === 'json') {
+        const data = JSON.parse(exported);
+        expect(Object.keys(data.summaries)).toHaveLength(entireLibrary ? 794 : 0);
+        expect(data.summaries).not.toHaveProperty(legacyPath);
+        if (entireLibrary) expect(data.summaries[availablePath]).toBeTruthy();
+      } else if (entireLibrary) {
+        expect(exported).toContain('## Video Summaries');
+        expect(exported).toContain('### 01 - Syncopation');
+      } else expect(exported).not.toContain('## Video Summaries');
+    }
+  }
   expect(bunnyRequests).toBe(0);
 });

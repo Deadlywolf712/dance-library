@@ -48,6 +48,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -68,12 +69,19 @@ internal fun LibraryScreen(
 ) {
     val root = state.browseLocation == BrowseLocation.Root && state.query.isBlank()
     val title = browseTitle(state)
+    val displayNodes = remember(state.browseNodes, state.browseLocation, state.query) {
+        if (state.browseLocation is BrowseLocation.Category && state.query.isBlank()) {
+            state.browseNodes.map { it to courseDisplay(it.title, title) }
+                .sortedWith { left, right -> courseDisplayOrder.compare(left.second, right.second) }
+                .map { it.first }
+        } else state.browseNodes
+    }
     Column(modifier.fillMaxSize()) {
         LibraryHeader(state, title, root, viewModel)
         SearchField(
             value = state.query,
             onValueChange = viewModel::setQuery,
-            placeholder = "Search all 795 lessons",
+            placeholder = "Search all ${state.allLessons.size} ${if (state.allLessons.size == 1) "lesson" else "lessons"}",
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
         )
         if (!root && state.query.isBlank()) BrowseBreadcrumbs(state, viewModel)
@@ -105,10 +113,10 @@ internal fun LibraryScreen(
                 }
             }
 
-            if (state.browseNodes.isEmpty()) {
+            if (displayNodes.isEmpty()) {
                 item { EmptyBrowse(state.query.isNotBlank()) }
             } else {
-                items(state.browseNodes, key = { node -> "${node::class.simpleName}-${node.id}" }) { node ->
+                items(displayNodes, key = { node -> "${node::class.simpleName}-${node.id}" }) { node ->
                     when (node) {
                         is BrowseNode.Category -> CategoryCard(node, state, viewModel)
                         is BrowseNode.Folder -> FolderCard(node.folder, state, viewModel)
@@ -118,6 +126,7 @@ internal fun LibraryScreen(
                                 lesson = lesson,
                                 favorite = lesson.id in state.practice.favorites,
                                 watched = lesson.id in state.practice.watched,
+                                completed = lesson.legacyPath in state.practice.workspace.completed,
                                 resumePositionMs = state.practice.positionsMs[lesson.id],
                                 bookmarkCount = state.practice.bookmarks[lesson.id].orEmpty().size,
                                 subtitle = if (state.query.isNotBlank()) lesson.fullFolderLabel() else "",
@@ -137,74 +146,52 @@ private fun androidx.compose.foundation.lazy.LazyListScope.homeSections(
     state: LibraryUiState,
     viewModel: LibraryViewModel,
 ) {
-    val favorites = state.allLessons.filter { it.id in state.practice.favorites }.take(8)
-    val continuing = state.practice.positionsMs.entries
-        .sortedByDescending { state.practice.lastWatchedAtMs[it.key] ?: 0L }
-        .mapNotNull { entry -> state.allLessons.firstOrNull { it.id == entry.key } }
-        .take(8)
-    val recentNotes = state.practice.bookmarks.entries
-        .map { entry -> entry.key to entry.value.filter { it.note.isNotBlank() } }
-        .filter { it.second.isNotEmpty() }
-        .sortedWith(
-            compareByDescending<Pair<String, List<com.deadlywolf.dancelibrary.data.PracticeBookmark>>> { it.second.size }
-                .thenByDescending { entry -> entry.second.maxOfOrNull { it.updatedAtMs } ?: 0L },
-        )
-        .mapNotNull { entry -> state.allLessons.firstOrNull { it.id == entry.first }?.let { it to entry.second } }
-        .take(6)
-
-    if (favorites.isNotEmpty()) {
-        val collapsed = state.practice.collapsedSections[HOME_FAVORITES] == true
-        item { HomeSectionHeader("Favorites", favorites.size, collapsed) { viewModel.setSectionCollapsed(HOME_FAVORITES, !collapsed) } }
-        if (!collapsed) {
-            items(favorites, key = { "home-favorite-${it.id}" }) { lesson ->
-                CompactHomeLesson(lesson, state, viewModel)
-            }
-            item { TextButton(onClick = { viewModel.setDestination(AppDestination.FAVORITES) }) { Text("View all favorites") } }
-        }
+    val continuing = state.lastLesson
+    val nextPath = state.practice.workspace.queue.firstOrNull { it !in state.practice.workspace.completed }
+        ?: state.practice.workspace.queue.firstOrNull()
+    val nextQueued = state.allLessons.firstOrNull { it.legacyPath == nextPath }
+    if (continuing != null) {
+        item(key = "continue-heading") { Text("Continue your practice", style = MaterialTheme.typography.titleLarge) }
+        item(key = "continue-lesson") { CompactHomeLesson(continuing, state, viewModel) }
     }
-    if (continuing.isNotEmpty()) {
-        val collapsed = state.practice.collapsedSections[HOME_CONTINUE] == true
-        item { HomeSectionHeader("Continue watching", continuing.size, collapsed) { viewModel.setSectionCollapsed(HOME_CONTINUE, !collapsed) } }
-        if (!collapsed) {
-            items(continuing, key = { "home-progress-${it.id}" }) { lesson -> CompactHomeLesson(lesson, state, viewModel) }
-        }
-    }
-    if (recentNotes.isNotEmpty()) {
-        val collapsed = state.practice.collapsedSections[HOME_NOTES] == true
-        item { HomeSectionHeader("Recent notes", recentNotes.size, collapsed) { viewModel.setSectionCollapsed(HOME_NOTES, !collapsed) } }
-        if (!collapsed) {
-            items(recentNotes, key = { "home-note-${it.first.id}" }) { (lesson, bookmarks) ->
-                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                    Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Rounded.NoteAlt, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                            Spacer(Modifier.width(10.dp))
-                            Text(lesson.title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                            Text(bookmarks.size.toString(), style = MaterialTheme.typography.titleMedium)
-                        }
-                        bookmarks.sortedBy { it.positionMs }.forEach { bookmark ->
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { viewModel.selectLesson(lesson.id, bookmark.positionMs) }
-                                    .padding(vertical = 4.dp),
-                            ) {
-                                Text(formatPlaybackTime(bookmark.positionMs), color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                                Spacer(Modifier.width(9.dp))
-                                Text(
-                                    bookmark.note,
-                                    modifier = Modifier.weight(1f),
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        }
+    if (nextQueued != null) {
+        item(key = "queue-preview") {
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
+                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Next in your queue", style = MaterialTheme.typography.labelLarge)
+                    Text(nextQueued.title, style = MaterialTheme.typography.titleMedium)
+                    Row {
+                        TextButton(onClick = { viewModel.selectLesson(nextQueued.id) }) { Text("Practice now") }
+                        TextButton(onClick = { viewModel.setDestination(AppDestination.QUEUE) }) { Text("View queue (${state.practice.workspace.queue.size})") }
                     }
                 }
             }
-            item { TextButton(onClick = { viewModel.setDestination(AppDestination.NOTES) }) { Text("Open notes manager") } }
+        }
+    } else item(key = "queue-intro") {
+        TextButton(onClick = { viewModel.setDestination(AppDestination.QUEUE) }) { Text("Plan your next practice session") }
+    }
+    item(key = "home-collections") {
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            TextButton(onClick = { viewModel.setDestination(AppDestination.HISTORY) }) { Text("Viewing history") }
+            TextButton(onClick = { viewModel.setDestination(AppDestination.NOTES) }) { Text("Open notebook") }
+        }
+    }
+    val recentNotes = state.allLessons.mapNotNull { lesson ->
+        val bookmark = state.practice.bookmarks[lesson.id].orEmpty().filter { it.note.isNotBlank() }.maxByOrNull { it.updatedAtMs }
+        val reflection = state.practice.workspace.reflections[lesson.legacyPath]?.takeIf { it.text.isNotBlank() }
+        val text = if ((reflection?.updatedAt ?: 0) > (bookmark?.updatedAtMs ?: 0)) reflection?.text else bookmark?.note
+        text?.let { Triple(lesson, it, maxOf(reflection?.updatedAt ?: 0L, bookmark?.updatedAtMs ?: 0L)) }
+    }.sortedByDescending { it.third }.take(3)
+    if (recentNotes.isNotEmpty()) {
+        val collapsed = state.practice.collapsedSections[HOME_NOTES] != false
+        item { HomeSectionHeader("Recent notes", recentNotes.size, collapsed) { viewModel.setSectionCollapsed(HOME_NOTES, !collapsed) } }
+        if (!collapsed) items(recentNotes, key = { "recent-note-${it.first.id}" }) { (lesson, text) ->
+            Card(onClick = { viewModel.setDestination(AppDestination.NOTES) }, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(lesson.title, style = MaterialTheme.typography.titleMedium)
+                    Text(text, maxLines = 2, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
         }
     }
 }
@@ -242,8 +229,7 @@ private fun LibraryHeader(
         Column(Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(
-                if (state.query.isNotBlank()) "${state.browseNodes.size} search results"
-                else "${state.allLessons.size} lessons · Bunny streaming",
+                browseSubtitle(state),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -257,9 +243,9 @@ private fun LibraryHeader(
 @Composable
 private fun PracticeStats(state: LibraryUiState) {
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-        StatPill("Watched", state.watchedCount.toString(), Modifier.weight(1f))
+        StatPill("Completed", state.allLessons.count { it.legacyPath in state.practice.workspace.completed }.toString(), Modifier.weight(1f))
         StatPill("Favorites", state.favoriteCount.toString(), Modifier.weight(1f))
-        StatPill("In progress", state.practice.positionsMs.size.toString(), Modifier.weight(1f))
+        StatPill("Queued", state.practice.workspace.queue.size.toString(), Modifier.weight(1f))
     }
 }
 
@@ -275,7 +261,9 @@ private fun BrowseBreadcrumbs(state: LibraryUiState, viewModel: LibraryViewModel
         is BrowseLocation.Folder -> buildList {
             add("Library" to BrowseLocation.Root)
             tree.categoryForFolder(location.folderId)?.let { add(it.title to BrowseLocation.Category(it.id)) }
-            tree.folderBreadcrumb(location.folderId).forEach { folder -> add(folder.displayName to BrowseLocation.Folder(folder.id)) }
+            tree.folderBreadcrumb(location.folderId).forEach { folder ->
+                add((if (folder.parentId == null) courseDisplay(folder.displayName, tree.categoryById[folder.categoryId]?.title.orEmpty()).heading else folder.displayName) to BrowseLocation.Folder(folder.id))
+            }
         }
     }
     LazyRow(
@@ -296,11 +284,11 @@ private fun BrowseBreadcrumbs(state: LibraryUiState, viewModel: LibraryViewModel
 @Composable
 private fun CategoryCard(node: BrowseNode.Category, state: LibraryUiState, viewModel: LibraryViewModel) {
     val lessons = remember(state.catalog, node.id) { state.allLessons.filter { it.categoryId == node.id } }
-    val watched = lessons.count { it.id in state.practice.watched }
+    val completed = lessons.count { it.legacyPath in state.practice.workspace.completed }
     FolderLikeCard(
         title = node.title,
-        subtitle = "${node.category.courseCount} courses · ${node.lessonCount} lessons",
-        watched = watched,
+        subtitle = "${node.category.courseCount} ${if (node.category.courseCount == 1) "course" else "courses"} · ${node.lessonCount} ${if (node.lessonCount == 1) "lesson" else "lessons"}",
+        completed = completed,
         total = node.lessonCount,
         icon = Icons.Rounded.LibraryMusic,
         onClick = { viewModel.navigate(BrowseLocation.Category(node.id)) },
@@ -310,11 +298,13 @@ private fun CategoryCard(node: BrowseNode.Category, state: LibraryUiState, viewM
 @Composable
 private fun FolderCard(folder: CatalogFolder, state: LibraryUiState, viewModel: LibraryViewModel) {
     val lessons = remember(state.tree, folder.id, state.practice.watched) { state.tree?.lessonsUnder(folder.id).orEmpty() }
-    val watched = lessons.count { it.id in state.practice.watched }
+    val completed = lessons.count { it.legacyPath in state.practice.workspace.completed }
+    val display = if (folder.parentId == null) courseDisplay(folder.displayName, state.tree?.categoryById?.get(folder.categoryId)?.title.orEmpty()) else CourseDisplay(folder.displayName)
     FolderLikeCard(
-        title = folder.displayName,
+        title = display.heading,
         subtitle = buildString {
-            folder.presentation?.title?.takeIf { it.isNotBlank() && it != folder.displayName }?.let {
+            if (display.teacher.isNotBlank()) append(display.teacher).append("\n")
+            folder.presentation?.title?.takeIf { it.isNotBlank() && it != folder.name }?.let {
                 append(it).append(" · ")
             }
             folder.presentation?.description?.takeIf(String::isNotBlank)?.let {
@@ -322,9 +312,10 @@ private fun FolderCard(folder: CatalogFolder, state: LibraryUiState, viewModel: 
             }
             append(folder.lessonCount).append(if (folder.lessonCount == 1) " lesson" else " lessons")
         },
-        watched = watched,
+        completed = completed,
         total = folder.lessonCount,
         icon = Icons.Rounded.Folder,
+        accessibilityLabel = folder.displayName,
         onClick = { viewModel.navigate(BrowseLocation.Folder(folder.id)) },
     )
 }
@@ -333,15 +324,16 @@ private fun FolderCard(folder: CatalogFolder, state: LibraryUiState, viewModel: 
 private fun FolderLikeCard(
     title: String,
     subtitle: String,
-    watched: Int,
+    completed: Int,
     total: Int,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
+    accessibilityLabel: String? = null,
     onClick: () -> Unit,
 ) {
     Card(
         onClick = onClick,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().semantics { accessibilityLabel?.let { contentDescription = it } },
     ) {
         Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
             Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(13.dp)) {
@@ -352,10 +344,10 @@ private fun FolderLikeCard(
                 Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3)
                 LinearProgressIndicator(
-                    progress = { if (total == 0) 0f else watched.toFloat() / total },
+                    progress = { if (total == 0) 0f else completed.toFloat() / total },
                     modifier = Modifier.fillMaxWidth(),
                 )
-                Text("$watched of $total opened", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("$completed of $total completed", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Icon(Icons.Rounded.ChevronRight, contentDescription = null)
         }
@@ -368,6 +360,7 @@ private fun CompactHomeLesson(lesson: Lesson, state: LibraryUiState, viewModel: 
         lesson = lesson,
         favorite = lesson.id in state.practice.favorites,
         watched = lesson.id in state.practice.watched,
+                                completed = lesson.legacyPath in state.practice.workspace.completed,
         resumePositionMs = state.practice.positionsMs[lesson.id],
         bookmarkCount = state.practice.bookmarks[lesson.id].orEmpty().size,
         subtitle = lesson.fullFolderLabel(),
@@ -443,7 +436,18 @@ private fun EmptyBrowse(searching: Boolean) {
 private fun browseTitle(state: LibraryUiState): String = when (val location = state.browseLocation) {
     BrowseLocation.Root -> "Dance Library"
     is BrowseLocation.Category -> state.tree?.categoryById?.get(location.categoryId)?.title ?: "Dance style"
-    is BrowseLocation.Folder -> state.tree?.folderById?.get(location.folderId)?.name ?: "Folder"
+    is BrowseLocation.Folder -> state.tree?.folderById?.get(location.folderId)?.let { folder ->
+        if (folder.parentId == null) courseDisplay(folder.displayName, state.tree?.categoryById?.get(folder.categoryId)?.title.orEmpty()).heading else folder.displayName
+    } ?: "Folder"
+}
+
+internal fun browseSubtitle(state: LibraryUiState): String {
+    if (state.query.isNotBlank()) {
+        val count = state.browseNodes.size
+        return "$count ${if (count == 1) "search result" else "search results"}"
+    }
+    val count = state.browseNodes.sumOf(BrowseNode::lessonCount)
+    return "$count ${if (count == 1) "lesson" else "lessons"}"
 }
 
 private const val HOME_FAVORITES = "favorites"

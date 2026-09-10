@@ -15,6 +15,10 @@ import com.deadlywolf.dancelibrary.data.PracticeExportOptions
 import com.deadlywolf.dancelibrary.data.PracticeRepository
 import com.deadlywolf.dancelibrary.data.PracticeReset
 import com.deadlywolf.dancelibrary.data.PracticeSnapshot
+import com.deadlywolf.dancelibrary.data.PracticeSegment
+import com.deadlywolf.dancelibrary.data.PracticeReflection
+import java.util.UUID
+import kotlin.math.roundToLong
 import com.deadlywolf.dancelibrary.data.CatalogRepository
 import com.deadlywolf.dancelibrary.model.BrowseLocation
 import com.deadlywolf.dancelibrary.model.BrowseNode
@@ -22,8 +26,8 @@ import com.deadlywolf.dancelibrary.model.CatalogTree
 import com.deadlywolf.dancelibrary.model.DanceCatalog
 import com.deadlywolf.dancelibrary.model.Lesson
 import com.deadlywolf.dancelibrary.model.ThemeSpec
-import com.deadlywolf.dancelibrary.model.isAvailable
 import com.deadlywolf.dancelibrary.model.matchesSearch
+import com.deadlywolf.dancelibrary.model.isAvailable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
@@ -34,7 +38,8 @@ import kotlinx.coroutines.launch
 
 enum class AppDestination(val label: String) {
     LIBRARY("Library"),
-    NOTES("Notes"),
+    NOTES("Notebook"),
+    QUEUE("Queue"),
     FAVORITES("Favorites"),
     HISTORY("History"),
     SETTINGS("Settings"),
@@ -43,6 +48,7 @@ enum class AppDestination(val label: String) {
 data class SeekRequest(
     val positionMs: Long,
     val nonce: Long,
+    val segment: PracticeSegment? = null,
 )
 
 data class PracticePlayerSession(
@@ -54,19 +60,10 @@ data class PracticePlayerSession(
     val theaterMode: Boolean = false,
 )
 
-internal fun sessionForLesson(
-    previous: PracticePlayerSession,
-    lessonId: String,
-    theaterModeAllowed: Boolean = true,
-): PracticePlayerSession = previous.copy(
-    lessonId = lessonId,
-    loopStartMs = null,
-    loopEndMs = null,
-    theaterMode = previous.theaterMode && theaterModeAllowed,
-)
+internal fun sessionForLesson(previous: PracticePlayerSession, lessonId: String, theaterModeAllowed: Boolean = true): PracticePlayerSession =
+    previous.copy(lessonId = lessonId, loopStartMs = null, loopEndMs = null, theaterMode = previous.theaterMode && theaterModeAllowed)
 
-internal fun summaryForBackup(lesson: Lesson): String =
-    lesson.rawSummary.takeIf { lesson.isAvailable }.orEmpty()
+internal fun summaryForBackup(lesson: Lesson): String = lesson.rawSummary.takeIf { lesson.isAvailable }.orEmpty()
 
 data class LibraryUiState(
     val loading: Boolean = true,
@@ -90,6 +87,7 @@ data class LibraryUiState(
         get() = catalog?.themes?.firstOrNull { it.id == practice.themeId }
             ?: catalog?.themes?.firstOrNull { it.id == catalog?.defaultThemeId }
     val watchedCount: Int get() = practice.watched.count { id -> allLessons.any { it.id == id } }
+    val completedCount: Int get() = allLessons.count { it.legacyPath in practice.workspace.completed }
     val favoriteCount: Int get() = practice.favorites.count { id -> allLessons.any { it.id == id } }
     val lastLesson: Lesson?
         get() = allLessons.firstOrNull { it.id == practice.lastLessonId }
@@ -146,6 +144,7 @@ class LibraryViewModel(
     private val transientPositionsMs = MutableStateFlow<Map<String, Long>>(emptyMap())
     private val suppressedResumeIds = MutableStateFlow<Set<String>>(emptySet())
     private val feedback = MutableStateFlow<String?>(null)
+    private val segmentSeekRequest = MutableStateFlow<SeekRequest?>(null)
 
     private val navigationControls = combine(
         query,
@@ -176,8 +175,8 @@ class LibraryViewModel(
     ) { play, seek, nonce, transient, suppressed ->
         PlaybackControls(play, seek?.let { SeekRequest(it, nonce) }, transient, suppressed)
     }
-    private val playbackControls = combine(playbackCore, playerSession) { playback, session ->
-        playback.copy(playerSession = session)
+    private val playbackControls = combine(playbackCore, playerSession, segmentSeekRequest) { playback, session, segmentRequest ->
+        playback.copy(playerSession = session, seekRequest = segmentRequest ?: playback.seekRequest)
     }
     private val controls = combine(navigationControls, playbackControls, feedback, ::UiControls)
 
@@ -266,6 +265,7 @@ class LibraryViewModel(
     }
 
     fun selectLesson(lessonId: String?, startPositionMs: Long? = null) {
+        segmentSeekRequest.value = null
         if (lessonId == null) {
             savedStateHandle[SELECTED_LESSON_KEY] = null
             savedStateHandle[PLAYBACK_INTENT_KEY] = false
@@ -273,11 +273,11 @@ class LibraryViewModel(
             return
         }
 
-        val lesson = uiState.value.allLessons.firstOrNull { it.id == lessonId }
-        val playable = lesson?.isAvailable == true
+        val playable = uiState.value.allLessons.firstOrNull { it.id == lessonId }?.isAvailable == true
         savedStateHandle[SELECTED_LESSON_KEY] = lessonId
         savedStateHandle[PLAYBACK_INTENT_KEY] = playable
-        if (sessionLessonId.value != lessonId) resetPlayerSession(lessonId, theaterModeAllowed = playable)
+        if (sessionLessonId.value != lessonId) resetPlayerSession(lessonId)
+        if (!playable) savedStateHandle[SESSION_THEATER_KEY] = false
         if (startPositionMs != null && playable) {
             savedStateHandle[SEEK_POSITION_KEY] = startPositionMs.coerceAtLeast(0L)
             savedStateHandle[SEEK_NONCE_KEY] = seekNonce.value + 1L
@@ -296,6 +296,7 @@ class LibraryViewModel(
     }
 
     fun clearSeekRequest() {
+        segmentSeekRequest.value = null
         savedStateHandle[SEEK_POSITION_KEY] = null
     }
 
@@ -304,6 +305,7 @@ class LibraryViewModel(
     }
 
     fun savePlayback(lessonId: String, positionMs: Long, durationMs: Long) {
+        if (uiState.value.allLessons.none { it.id == lessonId && it.isAvailable }) return
         if (positionMs < 0L) return
         val completed = isPlaybackComplete(positionMs, durationMs)
         suppressedResumeIds.update { suppressed ->
@@ -336,24 +338,26 @@ class LibraryViewModel(
     ) {
         if (selectedLessonId.value != lessonId) return
         savedStateHandle[SESSION_LESSON_KEY] = lessonId
-        savedStateHandle[SESSION_SPEED_KEY] = speed.coerceIn(0.5f, 2f)
+        savedStateHandle[SESSION_SPEED_KEY] = speed.coerceIn(0.25f, 2f)
         savedStateHandle[SESSION_MIRRORED_KEY] = mirrored
         savedStateHandle[SESSION_LOOP_START_KEY] = loopStartMs
         savedStateHandle[SESSION_LOOP_END_KEY] = loopEndMs
         savedStateHandle[SESSION_THEATER_KEY] = theaterMode
     }
 
-    fun addBookmark(lessonId: String, positionMs: Long, note: String = "") {
+    fun addBookmark(lessonId: String, positionMs: Long, note: String = "", onResult: (Boolean) -> Unit = {}) {
         viewModelScope.launch {
             val result = practiceRepository.addBookmark(lessonId, positionMs, note)
             showBookmarkResult(result)
+            onResult(result.status == BookmarkAddStatus.ADDED)
         }
     }
 
-    fun updateBookmarkNote(lessonId: String, bookmarkId: String, note: String) {
+    fun updateBookmarkNote(lessonId: String, bookmarkId: String, note: String, expected: PracticeBookmark? = null, onResult: (Boolean) -> Unit = {}) {
         viewModelScope.launch {
-            val saved = practiceRepository.updateBookmarkNote(lessonId, bookmarkId, note)
-            feedback.value = if (saved) "Note updated." else "The note could not be updated."
+            val saved = practiceRepository.updateBookmarkNote(lessonId, bookmarkId, note, expected)
+            feedback.value = if (saved) "Note updated." else "The note changed or could not be saved. Your draft is retained."
+            onResult(saved)
         }
     }
 
@@ -362,6 +366,102 @@ class LibraryViewModel(
             val deleted = practiceRepository.deleteBookmark(lessonId, bookmarkId)
             feedback.value = if (deleted) "Bookmark deleted." else "The bookmark could not be deleted."
         }
+    }
+
+    fun toggleQueued(lesson: Lesson) = savePracticeChange("Queue updated.") {
+        practiceRepository.toggleQueued(lesson.legacyPath)
+    }
+
+    fun moveQueued(path: String, offset: Int) = savePracticeChange("Queue reordered.") {
+        practiceRepository.moveQueued(path, offset)
+    }
+
+    fun removeQueued(path: String) = savePracticeChange("Removed from queue.") {
+        practiceRepository.removeQueued(path)
+    }
+
+    fun toggleCompleted(lesson: Lesson) = savePracticeChange("Completion updated.") {
+        practiceRepository.toggleCompleted(lesson.legacyPath)
+    }
+
+    fun savePracticeSegment(lesson: Lesson, title: String, startMs: Long, endMs: Long, speed: Float, onResult: (Boolean) -> Unit = {}) {
+        if (startMs < 0 || endMs <= startMs || !speed.isFinite() || speed !in 0.25f..2f) {
+            feedback.value = "Set a valid A–B loop before saving a segment."
+            onResult(false)
+            return
+        }
+        viewModelScope.launch {
+            val saved = practiceRepository.saveSegment(PracticeSegment(
+                id = UUID.randomUUID().toString(), path = lesson.legacyPath,
+                title = title.trim().ifBlank { "Practice segment" },
+                start = startMs / 1000.0, end = endMs / 1000.0, speed = speed.toDouble(),
+                createdAt = System.currentTimeMillis(),
+            ))
+            feedback.value = if (saved) "Practice segment saved." else "The segment could not be saved. Try again."
+            onResult(saved)
+        }
+    }
+
+    fun deletePracticeSegment(id: String) = savePracticeChange("Practice segment deleted.") {
+        practiceRepository.deleteSegment(id)
+    }
+
+    fun playPracticeSegment(segment: PracticeSegment) {
+        val lesson = uiState.value.allLessons.firstOrNull { it.legacyPath == segment.path }
+        if (lesson == null) {
+            feedback.value = "This segment's lesson is not in the current catalog. It remains in your backup."
+            return
+        }
+        if (!lesson.isAvailable) {
+            selectLesson(lesson.id)
+            setDestination(AppDestination.LIBRARY)
+            feedback.value = "The correct source video for this lesson is unavailable. Your segment remains saved."
+            return
+        }
+        selectLesson(lesson.id)
+        savedStateHandle[SESSION_SPEED_KEY] = segment.speed.toFloat()
+        savedStateHandle[SESSION_LOOP_START_KEY] = (segment.start * 1000).roundToLong()
+        savedStateHandle[SESSION_LOOP_END_KEY] = (segment.end * 1000).roundToLong()
+        val nonce = seekNonce.value + 1L
+        savedStateHandle[SEEK_NONCE_KEY] = nonce
+        segmentSeekRequest.value = SeekRequest((segment.start * 1000).roundToLong(), nonce, segment)
+        setDestination(AppDestination.LIBRARY)
+    }
+
+    fun saveReflection(lesson: Lesson, text: String, expected: PracticeReflection?, onResult: (Boolean) -> Unit = {}) {
+        viewModelScope.launch {
+            val saved = practiceRepository.saveReflection(lesson.legacyPath, text, expected)
+            feedback.value = if (saved) "Reflection saved." else "The reflection changed or could not be saved. Your draft is retained."
+            onResult(saved)
+        }
+    }
+
+    fun saveReflectionDraft(path: String, text: String, expected: PracticeReflection?) {
+        viewModelScope.launch {
+            if (!practiceRepository.saveReflectionDraft(path, text, expected)) feedback.value = "Your draft could not be saved on this device. Keep this editor open and copy your text."
+        }
+    }
+
+    fun clearReflectionDraft(path: String, onResult: (Boolean) -> Unit = {}) {
+        viewModelScope.launch { onResult(practiceRepository.clearReflectionDraft(path)) }
+    }
+
+    fun saveNoteDraft(lessonId: String, bookmarkId: String, text: String, expected: PracticeBookmark?) {
+        viewModelScope.launch {
+            if (!practiceRepository.saveNoteDraft(lessonId, bookmarkId, text, expected)) feedback.value = "Your draft could not be saved on this device. Keep this editor open and copy your text."
+        }
+    }
+
+    fun clearNoteDraft(bookmarkId: String, onResult: (Boolean) -> Unit = {}) {
+        viewModelScope.launch { onResult(practiceRepository.clearNoteDraft(bookmarkId)) }
+    }
+
+    fun undoDeleteBookmark() = savePracticeChange("Bookmark restored.") {
+        practiceRepository.undoDeleteBookmark()
+    }
+
+    private fun savePracticeChange(message: String, operation: suspend () -> Boolean) {
+        viewModelScope.launch { feedback.value = if (operation()) message else "The change could not be saved. Your existing data is unchanged." }
     }
 
     fun markNotesSeen() {
@@ -427,6 +527,10 @@ class LibraryViewModel(
         feedback.value = null
     }
 
+    fun showFeedback(message: String) {
+        feedback.value = message
+    }
+
     private fun loadCatalog() {
         catalogError.value = null
         catalog.value = null
@@ -437,7 +541,7 @@ class LibraryViewModel(
         }
     }
 
-    private fun resetPlayerSession(lessonId: String, theaterModeAllowed: Boolean) {
+    private fun resetPlayerSession(lessonId: String) {
         val next = sessionForLesson(
             previous = PracticePlayerSession(
                 lessonId = sessionLessonId.value,
@@ -448,7 +552,6 @@ class LibraryViewModel(
                 theaterMode = sessionTheaterMode.value,
             ),
             lessonId = lessonId,
-            theaterModeAllowed = theaterModeAllowed,
         )
         savedStateHandle[SESSION_SPEED_KEY] = next.speed
         savedStateHandle[SESSION_MIRRORED_KEY] = next.mirrored
@@ -561,12 +664,13 @@ private fun String.toDestination(): AppDestination =
 private fun BackupImportReport.userMessage(): String = if (!succeeded) {
     message ?: "The backup could not be imported."
 } else {
-        val changed = favoritesAdded + watchedAdded + positionsAddedOrUpdated + historyAddedOrUpdated + bookmarksAdded + bookmarksUpdated + settingsUpdated
+        val changed = favoritesAdded + watchedAdded + positionsAddedOrUpdated + historyAddedOrUpdated + bookmarksAdded + bookmarksUpdated + settingsUpdated + workspaceItemsChanged
     buildString {
         append("Import complete: ").append(changed).append(" saved item")
         if (changed != 1) append('s')
         append(" merged.")
-        if (unknownLegacyPaths.isNotEmpty()) append(" ${unknownLegacyPaths.size} unknown lesson path(s) skipped.")
+        if (unknownLegacyPaths.size == 1) append(" 1 lesson path is unavailable in this catalog and retained for future full backups.")
+        else if (unknownLegacyPaths.isNotEmpty()) append(" ${unknownLegacyPaths.size} lesson path(s) are unavailable in this catalog and retained for future full backups.")
     }
 }
 

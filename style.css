@@ -1246,72 +1246,6 @@ body.sidebar-closed #mobile-header {
   display: none;
 }
 
-.video-unavailable {
-  position: absolute;
-  inset: 0;
-  z-index: 10;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  padding: clamp(24px, 7vw, 72px);
-  text-align: center;
-  color: #f8fafc;
-  background: radial-gradient(circle at 50% 20%, #243245 0%, #111827 46%, #05070b 100%);
-}
-
-.video-unavailable[hidden] {
-  display: none;
-}
-
-.video-unavailable svg {
-  color: #fbbf24;
-}
-
-.video-unavailable strong {
-  font-size: clamp(1.05rem, 3vw, 1.45rem);
-}
-
-.video-unavailable span {
-  max-width: 650px;
-  color: #cbd5e1;
-  font-size: clamp(0.8rem, 2vw, 0.95rem);
-  line-height: 1.55;
-}
-
-.lesson-status-badge {
-  display: inline-flex;
-  align-items: center;
-  width: fit-content;
-  margin-top: 6px;
-  padding: 3px 8px;
-  border: 1px solid color-mix(in srgb, #fbbf24 55%, transparent);
-  border-radius: 999px;
-  color: #fbbf24;
-  background: color-mix(in srgb, #fbbf24 11%, transparent);
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-}
-
-.lesson-availability-notice {
-  padding: 16px 18px;
-  border: 1px solid color-mix(in srgb, #fbbf24 48%, var(--border-light));
-  border-radius: 12px;
-  background: color-mix(in srgb, #fbbf24 8%, var(--bg-surface));
-}
-
-.lesson-availability-notice h2 {
-  margin: 0 0 8px;
-  color: var(--text-main);
-}
-
-.lesson-availability-notice p {
-  margin: 0;
-  color: var(--text-muted);
-}
-
 .video-sequence-arrow {
   position: absolute;
   top: 50%;
@@ -2178,13 +2112,14 @@ video.mirrored {
 /* Bookmark Edit Row */
 .bookmark-edit-row {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
   gap: 8px;
   margin-top: 10px;
 }
 
 .bookmark-edit-label {
-  font-size: 0.8rem;
+  font-size: 0.875rem;
   font-weight: 600;
   color: var(--accent);
   white-space: nowrap;
@@ -2192,13 +2127,15 @@ video.mirrored {
 
 .bookmark-edit-input {
   flex: 1;
-  padding: 6px 10px;
+  padding: 12px;
   background: var(--bg-base);
   border: 1px solid var(--border-light);
   border-radius: 4px;
   color: var(--text-main);
   font-family: inherit;
-  font-size: 0.8rem;
+  font-size: 1rem;
+  line-height: 1.6;
+  resize: vertical;
   outline: none;
   transition: border-color 0.15s;
 }
@@ -2370,9 +2307,9 @@ video.mirrored {
 }
 
 .notes-video-path {
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
   color: var(--text-muted);
-  opacity: 0.7;
+  overflow-wrap: anywhere;
 }
 
 .notes-bookmark-item {
@@ -2407,7 +2344,7 @@ video.mirrored {
 }
 
 .notes-bookmark-time {
-  font-size: 0.8rem;
+  font-size: 0.875rem;
   font-weight: 600;
   color: var(--accent);
   white-space: nowrap;
@@ -2416,17 +2353,18 @@ video.mirrored {
 }
 
 .notes-bookmark-note {
-  font-size: 0.85rem;
+  font-size: 1rem;
   color: var(--text-main);
-  line-height: 1.4;
+  line-height: 1.6;
+  white-space: pre-wrap;
   word-break: break-word;
   overflow-wrap: break-word;
 }
 .notes-bookmark-ago {
-  font-size: 0.7rem;
+  display: block;
+  font-size: 0.75rem;
   color: var(--text-muted);
-  opacity: 0.5;
-  margin-left: 6px;
+  margin-top: 6px;
   white-space: nowrap;
 }
 
@@ -2553,13 +2491,15 @@ video.mirrored {
 
 .notes-inline-edit {
   width: 100%;
-  padding: 4px 8px;
+  padding: 12px;
   background: var(--bg-base);
   border: 1px solid var(--accent);
   border-radius: 4px;
   color: var(--text-main);
   font-family: inherit;
-  font-size: 0.85rem;
+  font-size: 1rem;
+  line-height: 1.6;
+  resize: vertical;
   outline: none;
 }
 
@@ -3888,8 +3828,8 @@ body {
 .home-hero {
   position: relative;
   overflow: hidden;
-  margin-bottom: clamp(22px, 3vw, 34px);
-  padding: clamp(20px, 3.2vw, 38px);
+  margin-bottom: 24px;
+  padding: clamp(18px, 2.2vw, 28px);
   border: 1px solid var(--border-light);
   border-radius: var(--radius-lg);
   background:
@@ -3943,13 +3883,13 @@ body {
 
 .home-title {
   margin: 0;
-  font-size: clamp(2rem, 5vw, 3.5rem);
+  font-size: clamp(2rem, 3.8vw, 2.75rem);
   line-height: 1.04;
 }
 
 .home-lede {
   max-width: 680px;
-  margin-top: 13px;
+  margin-top: 10px;
   color: var(--text-muted);
   font-size: clamp(0.92rem, 1.6vw, 1.05rem);
   line-height: 1.65;

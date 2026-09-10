@@ -57,13 +57,8 @@ class LibraryFilterTest {
     }
 
     @Test
-    fun unavailableLessonClearsInheritedTheaterModeAndDuplicateSummary() {
-        val previous = PracticePlayerSession(
-            lessonId = "lesson-a",
-            speed = 0.75f,
-            mirrored = true,
-            theaterMode = true,
-        )
+    fun unavailableLessonClearsInheritedTheaterModeAndWrongSummary() {
+        val previous = PracticePlayerSession(lessonId = "lesson-a", speed = 0.75f, mirrored = true, theaterMode = true)
         val next = sessionForLesson(previous, "lesson-b", theaterModeAllowed = false)
         val unavailable = lesson(
             availability = "unavailable",
@@ -72,7 +67,10 @@ class LibraryFilterTest {
         )
 
         assertEquals(false, next.theaterMode)
+        assertEquals(0.75f, next.speed)
+        assertEquals(true, next.mirrored)
         assertEquals("", summaryForBackup(unavailable))
+        assertEquals("Correct summary", summaryForBackup(lesson(rawSummary = "Correct summary")))
     }
 
     @Test

@@ -85,6 +85,22 @@ class CatalogTest {
     }
 
     @Test
+    fun unavailableMediaKeepsItsStableIdentityAndRequiresConsistentMetadata() {
+        val available = lesson()
+        val unavailable = available.copy(availability = "unavailable", availabilityReason = "Correct source is being recovered")
+        CatalogValidator.requireValid(simpleCatalog(listOf(unavailable)))
+        assertEquals(available.id, unavailable.id)
+        assertEquals(available.legacyPath, unavailable.legacyPath)
+        assertFalse(unavailable.isAvailable)
+        assertThrows(IllegalArgumentException::class.java) {
+            CatalogValidator.requireValid(simpleCatalog(listOf(available.copy(availabilityReason = "Unexpected reason"))))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            CatalogValidator.requireValid(simpleCatalog(listOf(available.copy(availability = "unknown"))))
+        }
+    }
+
+    @Test
     fun generatedCatalogHasCompleteWebsiteHierarchyAndThemes() {
         val asset = sequenceOf(
             File("src/main/assets/catalog.json"),
@@ -122,18 +138,11 @@ class CatalogTest {
             assertTrue(lessons.all { it.legacyPath.startsWith("$stableName/") })
         }
 
-        assertStableCourseAlias(
-            "Arthur  Oksana - Zouk Beginner",
-            "Arthur & Oksana — Zouk Beginner",
-        )
-        assertStableCourseAlias(
-            "Isabelle  Felicien - Beginner",
-            "Isabelle & Felicien — Kizomba Beginner",
-        )
-        assertStableCourseAlias(
-            "Pablo  Raquel - Intermediate",
-            "Pablo & Raquel — Intermediate/Advanced",
-        )
+        catalog.courses.forEach { assertStableCourseAlias(it.title, it.displayName) }
+        assertEquals(29, catalog.courses.count { it.title != it.displayName })
+        assertStableCourseAlias("Pablo  Raquel - Intermediate", "Pablo & Raquel — Intermediate/Advanced")
+        assertStableCourseAlias("Pablo  Raquel - IntermediateAdvanced", "Pablo & Raquel — Smooth Bachata Intermediate/Advanced")
+        assertStableCourseAlias("Korke  Judith - Fundamentals of Bachata Sensual", "Korke & Judith — Fundamentals of Bachata Sensual (Beginner)")
 
         val carolinaRosaLessons = catalog.lessons.filter { it.course.startsWith("Carolina Rosa") }
         assertEquals(30, carolinaRosaLessons.size)
@@ -153,13 +162,12 @@ class CatalogTest {
         assertEquals("09 - 3X3 Steps", correctedThreeByThreeLesson.title)
         assertEquals("Carolina Rosa - Advanced/09 - 33 Steps.mp4", correctedThreeByThreeLesson.legacyPath)
 
-        val unavailableLessons = catalog.lessons.filterNot(Lesson::isAvailable)
-        assertEquals(1, unavailableLessons.size)
-        assertEquals(
-            "Salsa Masterclass/Week 3/Spot Overturn/Spot Overturn - Explanation On2.mp4",
-            unavailableLessons.single().legacyPath,
-        )
-        assertTrue(unavailableLessons.single().availabilityReason.orEmpty().contains("exact duplicate"))
+        assertTrue(catalog.lessons.all { it.availability in setOf("available", "unavailable") })
+        assertTrue(catalog.lessons.all { it.isAvailable == it.availabilityReason.isNullOrBlank() })
+        val unavailable = catalog.lessons.filterNot(Lesson::isAvailable).single()
+        assertEquals("b1eef9cf-dcd4-4a86-8026-f30ddfcb416a", unavailable.id)
+        assertEquals("Salsa Masterclass/Week 3/Spot Overturn/Spot Overturn - Explanation On2.mp4", unavailable.legacyPath)
+        assertTrue(unavailable.availabilityReason.orEmpty().contains("exact duplicate"))
     }
 
     @Test

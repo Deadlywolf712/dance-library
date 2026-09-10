@@ -57,13 +57,13 @@ test('catalog paths, titles, and imported notes stay inert while preserving exac
   await expectPayloadStayedText(page);
   await page.locator('#close-spotlight').click();
 
-  await page.locator('#mobile-notes-btn').click();
+  await page.locator('[data-workspace-view="notes"]').click();
   await expect(page.locator('.notes-video-title')).toHaveText(maliciousTitle);
   await expect(page.locator('.notes-video-title')).toHaveAttribute('data-path', maliciousPath);
   await expect(page.locator('.notes-bookmark-note')).toHaveText(maliciousNote);
   await expect(page.locator('.notes-item-edit')).toHaveAttribute('data-note', maliciousNote);
   await expectPayloadStayedText(page);
-  await page.locator('#close-notes-modal').click();
+  await page.locator('[data-workspace-view="home"]').click();
 
   await page.locator('#mobile-favs-btn').click();
   await expect(page.locator('.notes-fav-title')).toHaveText(maliciousTitle);

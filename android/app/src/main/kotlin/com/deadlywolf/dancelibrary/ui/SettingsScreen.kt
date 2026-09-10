@@ -7,6 +7,7 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -31,6 +32,8 @@ import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Email
+import androidx.compose.material.icons.rounded.ExpandLess
+import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.Help
@@ -64,6 +67,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.deadlywolf.dancelibrary.BuildConfig
@@ -96,7 +102,9 @@ internal fun SettingsScreen(
     var includeFavorites by rememberSaveable { mutableStateOf(true) }
     var includeHistory by rememberSaveable { mutableStateOf(true) }
     var includeSettings by rememberSaveable { mutableStateOf(true) }
+    var includeWorkspace by rememberSaveable { mutableStateOf(true) }
     var currentLessonOnly by rememberSaveable { mutableStateOf(false) }
+    var customizeBackup by rememberSaveable { mutableStateOf(false) }
     var resetConfirmation by remember { mutableStateOf<PracticeReset?>(null) }
     var pendingImportJson by remember { mutableStateOf<String?>(null) }
     val exportOptions = PracticeExportOptions(
@@ -105,9 +113,10 @@ internal fun SettingsScreen(
         includeFavorites = includeFavorites,
         includeWatchHistory = includeHistory,
         includeSettings = includeSettings,
+        includeWorkspace = includeWorkspace,
         lessonIds = if (currentLessonOnly) state.selectedLesson?.let { setOf(it.id) } else null,
     )
-    val hasWebsiteImportData = includeBookmarks || includeFavorites || includeHistory
+    val hasWebsiteImportData = includeBookmarks || includeFavorites || includeHistory || includeWorkspace
 
     val createJson = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json"),
@@ -156,14 +165,97 @@ internal fun SettingsScreen(
         contentPadding = PaddingValues(start = 14.dp, top = 14.dp, end = 14.dp, bottom = 32.dp),
         modifier = modifier.fillMaxSize(),
     ) {
-        item { CollectionHeader("Settings", "Themes, streaming, backups, and maintenance") }
+        item { CollectionHeader("Settings", "Your saved practice and preferences") }
+        state.practice.storageReadError?.let { message ->
+            item { Text(message, color = MaterialTheme.colorScheme.error) }
+        }
+        item {
+            SettingsCard(Icons.Rounded.Download, "Export & import") {
+                Text(
+                    "Back up your notes, queue, segments, and progress. Import the JSON file on the website or another device to continue your practice.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                TextButton(onClick = { customizeBackup = !customizeBackup }) {
+                    Text(if (customizeBackup) "Hide export options" else "Choose what to export")
+                    Icon(if (customizeBackup) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore, contentDescription = null)
+                }
+                if (customizeBackup) {
+                SettingsCheck("Bookmarks and notes", includeBookmarks) { includeBookmarks = it }
+                SettingsCheck("Queue, segments, completion, and reflections", includeWorkspace) { includeWorkspace = it }
+                SettingsCheck("Video summaries and analysis", includeSummaries) { includeSummaries = it }
+                SettingsCheck("Favorites", includeFavorites) { includeFavorites = it }
+                SettingsCheck("History and resume positions", includeHistory) { includeHistory = it }
+                SettingsCheck("Theme and app settings", includeSettings) { includeSettings = it }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    FilterChip(selected = !currentLessonOnly, onClick = { currentLessonOnly = false }, label = { Text("Whole library") })
+                    FilterChip(
+                        selected = currentLessonOnly,
+                        onClick = { currentLessonOnly = true },
+                        enabled = state.selectedLesson != null,
+                        label = { Text("Current lesson") },
+                    )
+                }
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        enabled = hasWebsiteImportData,
+                        onClick = { createJson.launch("dance-library-backup.json") },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Icon(Icons.Rounded.Download, contentDescription = null)
+                        Spacer(Modifier.width(7.dp))
+                        Text("Save JSON backup")
+                    }
+                    OutlinedButton(
+                        onClick = { createMarkdown.launch("dance-library-notes.md") },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Export notes as Markdown") }
+                    OutlinedButton(
+                        onClick = { importJson.launch(arrayOf("application/json", "text/json", "text/plain")) },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Icon(Icons.Rounded.Upload, contentDescription = null)
+                        Spacer(Modifier.width(7.dp))
+                        Text("Import backup")
+                    }
+                }
+                if (!hasWebsiteImportData) {
+                    Text(
+                        "Select some saved practice data for a JSON backup. Summary-only Markdown is still available.",
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = { scope.launch {
+                        runCatching {
+                            withContext(Dispatchers.Default) { viewModel.exportMarkdown(exportOptions) }
+                                ?.let { shareByEmail(context, it) }
+                        }.onFailure { Toast.makeText(context, it.message ?: "Could not prepare your notes.", Toast.LENGTH_LONG).show() }
+                    } }) {
+                        Icon(Icons.Rounded.Email, contentDescription = null)
+                        Spacer(Modifier.width(6.dp))
+                        Text("Email")
+                    }
+                    TextButton(onClick = { scope.launch {
+                        runCatching {
+                            withContext(Dispatchers.Default) { viewModel.exportMarkdown(exportOptions) }
+                                ?.let { printNotes(context, it) }
+                        }.onFailure { Toast.makeText(context, it.message ?: "Could not prepare your notes.", Toast.LENGTH_LONG).show() }
+                    } }) {
+                        Icon(Icons.Rounded.Print, contentDescription = null)
+                        Spacer(Modifier.width(6.dp))
+                        Text("Print")
+                    }
+                }
+            }
+        }
         item {
             SettingsCard(Icons.Rounded.Palette, "Appearance") {
                 ThemeChooser(state, viewModel)
             }
         }
         item {
-            SettingsCard(Icons.Rounded.Cloud, "Bunny streaming server") {
+            SettingsCard(Icons.Rounded.Cloud, "Streaming server", collapsible = true) {
                 Text(
                     "Videos stream directly from Bunny. Leave the default unless your pull-zone hostname changes.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -186,89 +278,23 @@ internal fun SettingsScreen(
             }
         }
         item {
-            SettingsCard(Icons.Rounded.Download, "Export & import") {
-                Text(
-                    "JSON backups are compatible with the website. Practice data merges safely; any included app settings update their matching settings.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                SettingsCheck("Bookmarks and notes", includeBookmarks) { includeBookmarks = it }
-                SettingsCheck("Video summaries and analysis", includeSummaries) { includeSummaries = it }
-                SettingsCheck("Favorites", includeFavorites) { includeFavorites = it }
-                SettingsCheck("History and resume positions", includeHistory) { includeHistory = it }
-                SettingsCheck("Theme and app settings", includeSettings) { includeSettings = it }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    FilterChip(selected = !currentLessonOnly, onClick = { currentLessonOnly = false }, label = { Text("Whole library") })
-                    FilterChip(
-                        selected = currentLessonOnly,
-                        onClick = { currentLessonOnly = true },
-                        enabled = state.selectedLesson != null,
-                        label = { Text("Current lesson") },
-                    )
-                }
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(
-                        enabled = hasWebsiteImportData,
-                        onClick = { createJson.launch("dance-library-backup.json") },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Icon(Icons.Rounded.Download, contentDescription = null)
-                        Spacer(Modifier.width(7.dp))
-                        Text("JSON")
-                    }
-                    OutlinedButton(
-                        onClick = { createMarkdown.launch("dance-library-notes.md") },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text("Markdown") }
-                    OutlinedButton(
-                        onClick = { importJson.launch(arrayOf("application/json", "text/json", "text/plain")) },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Icon(Icons.Rounded.Upload, contentDescription = null)
-                        Spacer(Modifier.width(7.dp))
-                        Text("Import")
-                    }
-                }
-                if (!hasWebsiteImportData) {
-                    Text(
-                        "Select bookmarks, favorites, or history to create a website-importable JSON backup. Summary-only Markdown is still available.",
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = { scope.launch {
-                        withContext(Dispatchers.Default) { viewModel.exportMarkdown(exportOptions) }
-                            ?.let { shareByEmail(context, it) }
-                    } }) {
-                        Icon(Icons.Rounded.Email, contentDescription = null)
-                        Spacer(Modifier.width(6.dp))
-                        Text("Email")
-                    }
-                    TextButton(onClick = { scope.launch {
-                        withContext(Dispatchers.Default) { viewModel.exportMarkdown(exportOptions) }
-                            ?.let { printNotes(context, it) }
-                    } }) {
-                        Icon(Icons.Rounded.Print, contentDescription = null)
-                        Spacer(Modifier.width(6.dp))
-                        Text("Print")
-                    }
-                }
-            }
-        }
-        item {
-            SettingsCard(Icons.Rounded.DeleteSweep, "Reset saved data") {
+            SettingsCard(Icons.Rounded.DeleteSweep, "Reset saved data", collapsible = true) {
                 ResetButton("Watch history", PracticeReset.WATCH_HISTORY) { resetConfirmation = it }
-                ResetButton("Bookmarks and notes", PracticeReset.BOOKMARKS_AND_NOTES) { resetConfirmation = it }
+                ResetButton("Timestamp notes", PracticeReset.BOOKMARKS_AND_NOTES) { resetConfirmation = it }
                 ResetButton("Favorites", PracticeReset.FAVORITES) { resetConfirmation = it }
                 ResetButton("Resume positions", PracticeReset.RESUME_POSITIONS) { resetConfirmation = it }
+                ResetButton("All practice data", PracticeReset.ALL_PRACTICE_DATA) { resetConfirmation = it }
                 ResetButton("Everything", PracticeReset.EVERYTHING) { resetConfirmation = it }
             }
         }
         item {
-            SettingsCard(Icons.Rounded.Help, "Quick guide") {
+            SettingsCard(Icons.Rounded.Help, "Quick guide", collapsible = true) {
                 Text("Practice player", fontWeight = FontWeight.Bold)
-                Text("Use −5/+5 to repeat a move, choose 0.5×–2× speed, mirror the video, or set A and B for a repeating section.")
+                Text("Use −5/+5 to repeat a move, choose a playback speed, mirror the video, or set A and B for a repeating section. Save a named segment to replay that range and speed later.")
                 Text("Bookmarks & notes", fontWeight = FontWeight.Bold)
-                Text("While a lesson is open, add a bookmark at the exact timestamp. Notes can be searched, edited, copied, deleted, and reopened from the Notes tab.")
+                Text("Save timestamped notes and lesson reflections in your Notebook. Editors retain drafts on this device. Save a draft to include it in a backup; the most recent deleted bookmark can be restored with Undo.")
+                Text("Practice queue", fontWeight = FontWeight.Bold)
+                Text("Add lessons to your Queue, reorder your session, and mark completion when you are ready. Opening a lesson records a view; completion is your choice.")
                 Text("Library organization", fontWeight = FontWeight.Bold)
                 Text("Browse style → course → folder exactly like the website. Search is global; Previous and Next stay inside the current lesson folder.")
                 Text("Physical keyboard", fontWeight = FontWeight.Bold)
@@ -363,16 +389,23 @@ private fun ThemeChooser(state: LibraryUiState, viewModel: LibraryViewModel) {
 private fun SettingsCard(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     title: String,
+    collapsible: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    var expanded by rememberSaveable(title) { mutableStateOf(!collapsible) }
     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().then(
+                if (collapsible) Modifier.semantics { stateDescription = if (expanded) "Expanded" else "Collapsed" }
+                    .clickable(role = Role.Button, onClick = { expanded = !expanded }).padding(vertical = 10.dp)
+                else Modifier,
+            )) {
                 Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.width(9.dp))
-                Text(title, style = MaterialTheme.typography.titleLarge)
+                Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                if (collapsible) Icon(if (expanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore, contentDescription = null)
             }
-            content()
+            if (expanded) content()
         }
     }
 }
@@ -392,7 +425,7 @@ private fun ResetButton(label: String, reset: PracticeReset, onClick: (PracticeR
 
 private fun PracticeReset.label(): String = when (this) {
     PracticeReset.WATCH_HISTORY -> "watch history"
-    PracticeReset.BOOKMARKS_AND_NOTES -> "bookmarks and notes"
+    PracticeReset.BOOKMARKS_AND_NOTES -> "timestamp notes and their drafts"
     PracticeReset.FAVORITES -> "favorites"
     PracticeReset.RESUME_POSITIONS -> "resume positions"
     PracticeReset.ALL_PRACTICE_DATA -> "practice data"

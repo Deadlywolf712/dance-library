@@ -62,7 +62,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 
 /** Speeds intentionally match the website's practice-player menu. */
-val PRACTICE_PLAYBACK_SPEEDS: List<Float> = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
+val PRACTICE_PLAYBACK_SPEEDS: List<Float> = listOf(0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
 
 const val PRACTICE_SEEK_STEP_MS = 5_000L
 const val MINIMUM_PRACTICE_LOOP_MS = 500L
@@ -107,7 +107,7 @@ interface PracticePlayerController {
     fun setMirrored(mirrored: Boolean)
     fun toggleMirrored()
     fun setLoopStart(positionMs: Long? = null)
-    fun setLoopEnd(positionMs: Long? = null, activatePlayback: Boolean = true): Boolean
+    fun setLoopEnd(positionMs: Long? = null, activatePlayback: Boolean = true, minimumLoopMs: Long = MINIMUM_PRACTICE_LOOP_MS): Boolean
     fun clearLoop()
     fun setTheaterMode(enabled: Boolean)
     fun toggleTheaterMode()
@@ -176,6 +176,7 @@ fun HlsVideoPlayer(
     }
 
     val lifecyclePlayback = remember(player) { LifecyclePlaybackState() }
+    val initialPosition = remember(player) { InitialPlaybackPositionOwner(initialSeekPositionMs) }
     val latestTheaterModeCallback by rememberUpdatedState(onTheaterModeChanged)
     val practiceController = remember(player, lesson.id) {
         Media3PracticePlayerController(
@@ -183,6 +184,7 @@ fun HlsVideoPlayer(
             player = player,
             onTheaterModeChanged = { enabled -> latestTheaterModeCallback(enabled) },
             onRetryRequested = { playerError = null },
+            onExplicitSeek = initialPosition::supersede,
         )
     }
     val mirrored by remember(practiceController) {
@@ -191,7 +193,6 @@ fun HlsVideoPlayer(
             .distinctUntilChanged()
     }.collectAsState(initial = false)
     val progressOwnerId = lesson.id
-    val requestedInitialSeekMs = remember(player) { initialSeekPositionMs }
     val progressCallback = onProgress
     val playbackIntentCallback = onPlaybackIntentChanged
     val playerChangedCallback = onPlayerChanged
@@ -203,18 +204,20 @@ fun HlsVideoPlayer(
     }
 
     DisposableEffect(player) {
-        var initialResumeHandled = false
         fun applyInitialResume() {
-            if (initialResumeHandled) return
-            initialResumeHandled = true
-            initialPlaybackPositionMs(
-                requestedPositionMs = requestedInitialSeekMs,
+            initialPosition.takeOnReady(
                 resumePositionMs = latestResumePositionMs,
                 durationMs = player.duration,
             )?.let(player::seekTo)
         }
 
         val listener = object : Player.Listener {
+            override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) {
+                // PlayerView's native scrubber seeks directly on Media3 and
+                // therefore also supersedes the pending initial resume.
+                if (reason == Player.DISCONTINUITY_REASON_SEEK) initialPosition.supersede()
+            }
+
             override fun onPlaybackStateChanged(state: Int) {
                 playbackState = state
                 if (state == Player.STATE_READY) {
@@ -378,11 +381,12 @@ fun HlsVideoPlayer(
     }
 }
 
-private class Media3PracticePlayerController(
+internal class Media3PracticePlayerController(
     lessonId: String,
     private val player: Player,
     private val onTheaterModeChanged: (Boolean) -> Unit,
     private val onRetryRequested: () -> Unit,
+    private val onExplicitSeek: () -> Unit = {},
 ) : PracticePlayerController {
     private val mutableState = MutableStateFlow(
         PracticePlayerState(
@@ -413,6 +417,7 @@ private class Media3PracticePlayerController(
 
     override fun seekTo(positionMs: Long) {
         if (closed) return
+        onExplicitSeek()
         player.seekTo(clampPracticeSeekPosition(positionMs, knownDurationMs(player.duration)))
         refresh()
     }
@@ -447,17 +452,19 @@ private class Media3PracticePlayerController(
         mutableState.update { it.copy(loop = PracticeLoop(startMs = start)) }
     }
 
-    override fun setLoopEnd(positionMs: Long?, activatePlayback: Boolean): Boolean {
+    override fun setLoopEnd(positionMs: Long?, activatePlayback: Boolean, minimumLoopMs: Long): Boolean {
         if (closed) return false
         val start = mutableState.value.loop?.startMs ?: return false
         val loop = normalizedPracticeLoop(
             firstPositionMs = start,
             secondPositionMs = positionMs ?: player.currentPosition,
             durationMs = knownDurationMs(player.duration),
+            minimumLoopMs = minimumLoopMs,
         ) ?: return false
 
         mutableState.update { it.copy(loop = loop) }
         if (activatePlayback) {
+            onExplicitSeek()
             player.seekTo(loop.startMs)
             player.play()
             refresh()
@@ -486,7 +493,10 @@ private class Media3PracticePlayerController(
         onRetryRequested()
         clearError()
         player.prepare()
-        if (retryPosition > 0L) player.seekTo(retryPosition)
+        if (retryPosition > 0L) {
+            onExplicitSeek()
+            player.seekTo(retryPosition)
+        }
         play()
     }
 
@@ -524,7 +534,9 @@ private class Media3PracticePlayerController(
                 if (end == null) {
                     loop.copy(startMs = clampPracticeSeekPosition(loop.startMs, duration))
                 } else {
-                    normalizedPracticeLoop(loop.startMs, end, duration)
+                    // This range was validated when selected. Imported saved
+                    // segments may be shorter than the manual A/B minimum.
+                    normalizedPracticeLoop(loop.startMs, end, duration, minimumLoopMs = 1L)
                 }
             }
             previous.copy(
@@ -552,6 +564,20 @@ private class Media3PracticePlayerController(
 
 internal fun knownDurationMs(durationMs: Long): Long? =
     durationMs.takeIf { it != C.TIME_UNSET && it > 0L }
+
+/** A mount's initial seek is consumed once, unless a newer explicit seek wins. */
+internal class InitialPlaybackPositionOwner(requestedPositionMs: Long?) {
+    private val requestedPositionMs: Long? = requestedPositionMs
+    private var consumed = false
+
+    fun supersede() { consumed = true }
+
+    fun takeOnReady(resumePositionMs: Long, durationMs: Long): Long? {
+        if (consumed || knownDurationMs(durationMs) == null) return null
+        consumed = true
+        return initialPlaybackPositionMs(requestedPositionMs, resumePositionMs, durationMs)
+    }
+}
 
 internal fun clampPracticeSeekPosition(requestedPositionMs: Long, durationMs: Long?): Long {
     val nonNegative = requestedPositionMs.coerceAtLeast(0L)
@@ -662,5 +688,5 @@ private const val PLAYER_STATE_POLL_INTERVAL_MS = 250L
 private const val ACTIVE_LOOP_POLL_INTERVAL_MS = 50L
 private const val MINIMUM_USEFUL_RESUME_MS = 500L
 private const val RESUME_END_GUARD_MS = 5_000L
-private const val MINIMUM_PLAYBACK_SPEED = 0.5f
+private const val MINIMUM_PLAYBACK_SPEED = 0.25f
 private const val MAXIMUM_PLAYBACK_SPEED = 2f

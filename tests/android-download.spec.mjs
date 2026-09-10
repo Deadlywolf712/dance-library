@@ -7,7 +7,7 @@ test.beforeEach(async ({ page }) => {
   await page.route('https://fonts.gstatic.com/**', route => route.abort());
 });
 
-test('Android APK download is prominent and touch friendly on mobile', async ({ page }) => {
+test('Android APK download remains touch friendly below the mobile library', async ({ page }) => {
   await page.goto('/');
 
   const download = page.getByRole('link', {
@@ -25,7 +25,7 @@ test('Android APK download is prominent and touch friendly on mobile', async ({ 
   expect(bounds.x + bounds.width).toBeLessThanOrEqual(390);
 });
 
-test('Android APK download remains visible in the desktop hero', async ({ page }) => {
+test('Android APK download remains available in the desktop library footer', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/');
 
